@@ -257,3 +257,8 @@ textarea.inp{width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:
 .kabrir:hover{background:var(--acento);color:#fff;border-color:var(--acento)}
 .kcard.cortado{border-left-color:#5b7fa6}
 .etapa-aberta{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+
+.kcard.compacto .d.um{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kcard.compacto .rodape{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:7px}
+.kcard.compacto .rodape .btn{margin-left:auto}
+.kcard.compacto:hover{box-shadow:0 6px 16px rgba(40,38,34,.16)}
