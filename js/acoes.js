@@ -59,6 +59,48 @@ export async function novaOp(depois, filtroPedido = null) {
   });
 }
 
+// ---------- Encaminhar peças concluídas numa etapa (para outra etapa ou embalagem) ----------
+const DESTINOS = [['FACCAO', 'Facção'], ['SILK', 'Silk'], ['BORDADO', 'Bordado'], ['EMBALAGEM', 'Embalagem']];
+export async function encaminhar(opId, de, para, depois) {
+  if (!tem('producao')) return toast('Encaminhar exige o perfil "producao".', 'erro');
+  const [etapas, itens] = await Promise.all([
+    ler(db.from('v_op_item_etapas').select('*').eq('op_id', opId).eq('etapa', de).gt('concluido', 0)),
+    ler(db.from('v_op_itens').select('*').eq('op_id', opId)),
+  ]);
+  if (!etapas.length) return toast('Não há peças concluídas nesta etapa.', 'erro');
+  const info = new Map(itens.map(i => [i.op_item_id, i]));
+  const op = itens[0];
+  // sugestão: próxima etapa planejada do 1º item; se não houver, embalagem
+  const plano = arr(info.get(etapas[0].op_item_id)?.item_etapas);
+  const sugestao = para || plano[plano.indexOf(de) + 1] || 'EMBALAGEM';
+  const linhasHtml = (dest) => etapas.map(e => {
+    const i = info.get(e.op_item_id) || {}, rot = arr(i.item_etapas);
+    const passa = dest === 'EMBALAGEM' || rot.includes(dest);
+    const faltam = dest === 'EMBALAGEM' ? rot.slice(rot.indexOf(de) + 1) : [];
+    return `<tr data-oi="${e.op_item_id}"><td>${h(i.pedido_numero)}<div class="peq muted">${h(i.cliente_nome)}</div></td><td>${h(rotuloItem(i))}</td>
+      <td class="peq">${h(etapasTexto(rot))}</td><td class="n">${num(e.concluido)}</td>
+      <td class="n">${passa ? `<input class="inp num" type="number" min="0" max="${e.concluido}" value="${e.concluido}" data-eq>` : `<span class="peq muted">não passa por ${h(NOME_ETAPA[dest] || dest)}</span>`}
+      ${passa && faltam.length ? `<div class="peq" style="color:var(--alerta)">ainda previsto: ${h(etapasTexto(faltam))}</div>` : ''}</td></tr>`;
+  }).join('');
+  modal({
+    titulo: `OP ${op.op_numero} · ${NOME_ETAPA[de]} concluída · para onde vai?`, largo: true,
+    corpo: `<div class="grade g2"><label class="campo">Destino<select id="enc-para">${DESTINOS.map(([v, n]) => `<option value="${v}" ${v === sugestao ? 'selected' : ''}>${n}${v === de ? ' (de novo)' : ''}</option>`).join('')}</select></label></div>
+      <div class="tabela-wrap" style="margin-top:10px"><table><thead><tr><th>Pedido</th><th>Item</th><th>Etapas previstas</th><th class="n">Concluídas</th><th class="n">Encaminhar</th></tr></thead>
+      <tbody id="enc-linhas">${linhasHtml(sugestao)}</tbody></table></div>
+      <p class="peq muted" style="margin:8px 0 0">O que não for encaminhado agora continua aqui como concluído, esperando decisão.</p>`,
+    aoAbrir: (m) => { m.querySelector('#enc-para').onchange = (ev) => { m.querySelector('#enc-linhas').innerHTML = linhasHtml(ev.target.value); }; },
+    botoes: [{ texto: 'Cancelar' }, { texto: 'Encaminhar', classe: 'pri', acao: async (m) => {
+      const dest = m.querySelector('#enc-para').value;
+      const linhas = [...m.querySelectorAll('#enc-linhas tr[data-oi]')].map(tr => ({ op_item_id: tr.dataset.oi, quantidade: +(tr.querySelector('[data-eq]')?.value) || 0 })).filter(l => l.quantidade > 0);
+      if (!linhas.length) { toast('Nenhuma peça para encaminhar.', 'erro'); return false; }
+      const r = await chamar(db, 'encaminhar', { p_de: de, p_para: dest, p_linhas: linhas });
+      if (r == null) return false;
+      toast(`${r} peça(s) encaminhadas para ${DESTINOS.find(d => d[0] === dest)[1]}.`, 'ok');
+      depois && depois();
+    } }]
+  });
+}
+
 // ---------- Desmembrar OP: peças ainda paradas vão para uma OP nova ----------
 export async function desmembrar(opId, depois) {
   if (!tem('producao')) return toast('Desmembrar exige o perfil "producao".', 'erro');

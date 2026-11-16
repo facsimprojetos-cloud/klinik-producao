@@ -246,3 +246,7 @@ textarea.inp{width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:
 .tab-itens input[type=checkbox]{width:18px;height:18px;min-height:0;margin:0;cursor:pointer}
 .barra-sel{position:fixed;left:0;right:0;bottom:0;z-index:150;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;background:#fff;border-top:2px solid var(--acento);padding:12px 18px;box-shadow:0 -6px 18px rgba(40,38,34,.12)}
 @media(min-width:861px){.barra-sel{left:240px}}
+
+.kcard[draggable=true]{cursor:grab;border-left:4px solid #2f8a57}
+.kcard.arrastando{opacity:.45}
+.kcol.alvo{outline:3px dashed var(--acento);outline-offset:-3px;background:#fbf5e8}

@@ -1,6 +1,6 @@
 import { db, tem } from '../app.js';
 import { h, num, data, chip, ler, NOME_ETAPA } from '../util.js';
-import { novaOp, desmembrar, enviar, confirmarSaida, excluirRemessa, receber, embalar, imprimirRomaneio, imprimirFolhaOp, chipsEtapas } from '../acoes.js';
+import { novaOp, desmembrar, encaminhar, enviar, confirmarSaida, excluirRemessa, receber, embalar, imprimirRomaneio, imprimirFolhaOp, chipsEtapas } from '../acoes.js';
 
 const COLUNAS = [
   { id: 'FACCAO', nome: 'Facção' }, { id: 'SILK', nome: 'Silk' }, { id: 'BORDADO', nome: 'Bordado' },
@@ -31,7 +31,7 @@ export async function render(el) {
     </div>
     <div class="kanban">${COLUNAS.map(col => {
       const lista = filtrados.filter(c => colunaDe(c) === col.id);
-      return `<section class="kcol"><div class="kcol-cab">${h(col.nome)} <small>${num(lista.reduce((a, c) => a + c.quantidade, 0))} pç</small></div>
+      return `<section class="kcol" data-col="${col.id}"><div class="kcol-cab">${h(col.nome)} <small>${num(lista.reduce((a, c) => a + c.quantidade, 0))} pç</small></div>
         ${lista.map(c => cartao(c, pode)).join('') || '<div class="kvazio">Nada aqui</div>'}</section>`;
     }).join('')}</div>`;
 
@@ -49,6 +49,24 @@ export async function render(el) {
     else if (d.acao === 'embalar') embalar(d.op, volta);
     else if (d.acao === 'folha') imprimirFolhaOp(d.op);
     else if (d.acao === 'desmembrar') desmembrar(d.op, volta);
+    else if (d.acao === 'encaminhar') encaminhar(d.op, d.etapa, null, volta);
+  });
+  // arrastar cartão concluído para outra coluna
+  let arrastando = null;
+  el.querySelectorAll('.kcard[draggable=true]').forEach(k => {
+    k.ondragstart = (e) => { arrastando = { op: k.dataset.op, etapa: k.dataset.etapa }; e.dataTransfer.effectAllowed = 'move'; k.classList.add('arrastando'); };
+    k.ondragend = () => { k.classList.remove('arrastando'); el.querySelectorAll('.kcol').forEach(c => c.classList.remove('alvo')); };
+  });
+  el.querySelectorAll('.kcol[data-col]').forEach(col => {
+    const ok = () => arrastando && col.dataset.col !== 'PRONTO';
+    col.ondragover = (e) => { if (ok()) { e.preventDefault(); col.classList.add('alvo'); } };
+    col.ondragleave = () => col.classList.remove('alvo');
+    col.ondrop = (e) => {
+      e.preventDefault(); col.classList.remove('alvo');
+      if (!ok()) return;
+      const a = arrastando; arrastando = null;
+      encaminhar(a.op, a.etapa, col.dataset.col, () => render(el));
+    };
   });
 }
 
@@ -69,15 +87,20 @@ function cartao(c, pode) {
     estado = `<div class="d"><b>Com ${h(c.parceiro_nome)}</b> desde ${data(c.data_envio)}${c.previsao_retorno ? ` · previsão ${data(c.previsao_retorno)}` : ''}</div><div class="d">${h(c.remessa_numero)}</div>`;
     if (pode) acoes = `<button class="btn peq pri" data-acao="receber" data-rem="${c.remessa_id}">Receber peças</button>
       <button class="btn peq" data-acao="romaneio" data-rem="${c.remessa_id}">Romaneio</button>`;
+  } else if (c.estado === 'CONCLUIDO') {
+    cls = 'concluido';
+    estado = chip(`✓ ${NOME_ETAPA[c.etapa]} pronta`, 'ok') + `<div class="d peq muted">Arraste para a próxima coluna ou clique em Encaminhar.</div>`;
+    if (pode) acoes = `<button class="btn peq pri" data-acao="encaminhar" data-op="${c.op_id}" data-etapa="${c.etapa}">Encaminhar ▸</button>`;
   } else if (c.estado === 'AGUARDANDO_EMBALAGEM') {
-    estado = chip('Passou por todas as etapas', 'ok');
+    estado = chip('Pronto para embalar', 'ok');
     if (pode) acoes = `<button class="btn peq pri" data-acao="embalar" data-op="${c.op_id}">Embalar</button>`;
   } else if (c.estado === 'EMBALADO') {
     cls = 'pronto'; estado = chip('Embalado', 'ok');
   }
   if (c.atrasado) cls = 'atrasado';
   const tudo = col === 'EMBALAGEM' || col === 'PRONTO';
-  return `<article class="kcard ${cls}">
+  const arrasta = pode && c.estado === 'CONCLUIDO' ? `draggable="true" data-op="${c.op_id}" data-etapa="${c.etapa}"` : '';
+  return `<article class="kcard ${cls}" ${arrasta}>
     <div class="t"><span>OP ${c.op_numero}</span><span class="q">${num(c.quantidade)} pç</span></div>
     ${c.op_descricao ? `<div class="d"><b>${h(c.op_descricao)}</b></div>` : ''}
     <div class="d">${h(c.itens)}</div>
