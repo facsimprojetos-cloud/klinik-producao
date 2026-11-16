@@ -162,10 +162,19 @@ export function qrSvg(texto) {
   return q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
 }
 
-export function imprimirHtml(html) {
+// nomeArquivo: vira o nome sugerido ao "Salvar como PDF" (o navegador usa o título da página)
+export function nomeArquivo(partes) {
+  return partes.flat().filter(x => x != null && String(x).trim() !== '').map(x => String(x).trim())
+    .join(' - ').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').slice(0, 180);
+}
+export function imprimirHtml(html, nome) {
   const area = document.getElementById('impressao');
   area.className = '';
   area.innerHTML = html;
+  const tituloAntes = document.title;
+  if (nome) document.title = nome;
+  const volta = () => { document.title = tituloAntes; window.removeEventListener('afterprint', volta); };
+  window.addEventListener('afterprint', volta);
   setTimeout(() => window.print(), 300);
 }
 

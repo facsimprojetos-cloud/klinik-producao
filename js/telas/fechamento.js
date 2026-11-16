@@ -1,5 +1,5 @@
 import { db, tem } from '../app.js';
-import { h, num, moeda, data, chip, modal, ler, chamar, toast, confirmar, pedirTexto, opcoes, hojeISO, cadastros, NOME_ETAPA, imprimirHtml, cabecalhoDoc } from '../util.js';
+import { h, num, moeda, data, chip, modal, ler, chamar, toast, confirmar, pedirTexto, opcoes, hojeISO, cadastros, NOME_ETAPA, imprimirHtml, cabecalhoDoc, nomeArquivo } from '../util.js';
 
 let aba = 'novo';
 let parceiro = '';
@@ -84,5 +84,6 @@ async function imprimir(f) {
       <tbody>${itens.map(i => `<tr><td>${h(i.remessas?.numero)}</td><td>${h(NOME_ETAPA[i.remessas?.etapa] || '')}</td><td>${data(i.remessas?.data_envio)}</td><td class="n">${num(i.pecas)}</td><td class="n">${moeda(i.valor)}</td></tr>`).join('')}</tbody></table>
     <div class="total">TOTAL: ${moeda(f.total)}</div>
     ${f.observacao ? `<p>Observações: ${h(f.observacao)}</p>` : ''}
-    <div class="assin"><div>KLINIK</div><div>${h(f.parceiro_nome)}</div></div></div>`);
+    <div class="assin"><div>KLINIK</div><div>${h(f.parceiro_nome)}</div></div></div>`,
+    nomeArquivo(['Fechamento', f.numero, f.parceiro_nome, f.competencia, f.status, moeda(f.total).replace(/\s/g, ' ')]));
 }

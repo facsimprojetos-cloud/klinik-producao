@@ -3,7 +3,7 @@ import { db, tem } from './app.js';
 import { PREVISAO_DIAS } from './config.js';
 import {
   h, num, moeda, data, dataHora, chip, modal, chamar, ler, toast, confirmar, hojeISO, somaDias, opcoes,
-  cadastros, NOME_ETAPA, etapasTexto, arr, qrSvg, imprimirHtml, cabecalhoDoc
+  cadastros, NOME_ETAPA, etapasTexto, arr, qrSvg, imprimirHtml, cabecalhoDoc, nomeArquivo
 } from './util.js';
 
 const rotuloItem = (x) => [x.referencia, x.descricao, x.cor, x.tamanho].filter(Boolean).join(' · ');
@@ -284,6 +284,7 @@ export function tabelaFuncionarios(funcs) {
 }
 
 // ---------- Romaneio (A4) ----------
+const unicos = (l) => [...new Set(l.filter(Boolean))];
 export async function imprimirRomaneio(remessaId) {
   const [[rem], envios] = await Promise.all([
     ler(db.from('v_remessas').select('*').eq('id', remessaId)),
@@ -306,7 +307,9 @@ export async function imprimirRomaneio(remessaId) {
     ${rem.observacao ? `<div class="obs">${h(rem.observacao)}</div>` : ''}
     ${envios.filter(e => funcs.get(e.pedido_item_id)?.length).map(e => `<h3>Medidas · ${h(e.pedido_numero)} · ${h(e.cliente_nome)} · ${h(rotuloItem(e))}</h3>${tabelaFuncionarios(funcs.get(e.pedido_item_id))}`).join('')}
     <div class="assin"><div>Enviado por (KLINIK) · data</div><div>Recebido por (${h(rem.parceiro_nome)}) · data</div></div>
-  </div>`);
+  </div>`, nomeArquivo(['Romaneio', rem.numero, NOME_ETAPA[rem.etapa], rem.parceiro_nome,
+    'OP ' + unicos(envios.map(e => e.op_numero)).join(', '), 'Pedido ' + unicos(envios.map(e => e.pedido_numero)).join(', '),
+    unicos(envios.map(e => e.cliente_nome)).join(', '), num(rem.pecas) + ' pc', data(rem.data_envio).replaceAll('/', '-')]));
 }
 
 // ---------- Folha da OP para o parceiro ----------
@@ -328,7 +331,9 @@ export async function imprimirFolhaOp(opId) {
       <tbody>${lista.map(i => `<tr><td>${h(i.referencia || '')}</td><td>${h(i.descricao)}${i.silk_desc ? `<br><small>Silk: ${h(i.silk_desc)}</small>` : ''}${i.bordado_desc ? `<br><small>Bordado: ${h(i.bordado_desc)}</small>` : ''}</td><td>${h(i.tecido || '')}</td><td>${h(i.cor || '')}</td><td>${h(i.tamanho || '')}</td><td class="n"><b>${num(i.quantidade)}</b></td></tr>`).join('')}</tbody></table>
       ${lista.filter(i => i.observacao).map(i => `<div class="obs">${h(i.descricao)} ${h(i.cor || '')}: ${h(i.observacao)}</div>`).join('')}
       ${lista.filter(i => funcs.get(i.pedido_item_id)?.length).map(i => `<div style="font-weight:700;margin-top:2mm">${h(rotuloItem(i))}</div>${tabelaFuncionarios(funcs.get(i.pedido_item_id))}`).join('')}`).join('')}
-  </div>`);
+  </div>`, nomeArquivo(['OP ' + op.op_numero, etapasTexto(arr(op.roteiro)), op.op_descricao,
+    'Pedido ' + unicos(itens.map(i => i.pedido_numero)).join(', '), unicos(itens.map(i => i.cliente_nome)).join(', '),
+    num(itens.reduce((a, i) => a + i.quantidade, 0)) + ' pc']));
 }
 
 // ---------- Folha de corte (por pedido) ----------
@@ -365,7 +370,8 @@ export async function imprimirFolhaCorte(pedidoId) {
       <div style="display:flex;justify-content:space-between;font-size:7pt;color:#8a857d;padding:1mm 2mm;border-top:1px solid #e2ded7"><span>KLINIK · Folha de corte · Pedido ${h(ped.numero)} · ${h(ped.cliente_nome)}</span><span>Ficha ${n + 1} de ${cortes.length}</span></div>
     </div>`;
   });
-  imprimirHtml(`<div class="doc">${fichas.join('')}</div>`);
+  imprimirHtml(`<div class="doc">${fichas.join('')}</div>`, nomeArquivo(['Folha de corte', 'Pedido ' + ped.numero, ped.cliente_nome,
+    cortes.map(c => c.codigo).join(', '), data(ped.previsao_entrega)?.replaceAll('/', '-') && 'entrega ' + data(ped.previsao_entrega).replaceAll('/', '-')]));
   toast(`${cortes.length} ficha(s) de corte geradas.`, 'ok');
 }
 

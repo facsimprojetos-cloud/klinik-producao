@@ -2,7 +2,7 @@ import { db, tem } from '../app.js';
 import { EMPRESA_PDF } from '../config.js';
 import {
   h, num, moeda, data, chip, ler, toast, msgErro, confirmar, hojeISO, cadastros, limparCache, modal, chamar,
-  ETAPAS, NOME_ETAPA, etapasTexto, arr, imprimirHtml, cabecalhoDoc, autocompletar
+  ETAPAS, NOME_ETAPA, etapasTexto, arr, imprimirHtml, cabecalhoDoc, autocompletar, nomeArquivo
 } from '../util.js';
 import { tabelaFuncionarios } from '../acoes.js';
 
@@ -381,7 +381,7 @@ async function gerarPdf() {
     <div class="assin"><div>${h(cli?.razao_social || o.cliente_nome)}</div><div>Data do aceite</div></div>
     <p style="margin-top:6mm">${E.despedida.map(h).join('<br>')}</p>
     <div class="rod">${h(E.rodape)}</div>
-  </div>`);
+  </div>`, nomeArquivo(['Orcamento', o.numero, 'Rev ' + o.revisao, o.cliente_nome, o.vendedor, data(o.data).replaceAll('/', '-')]));
   const { error } = await db.rpc('orcamento_pdf_gerado', { p_id: o.id, p_url: null });
   if (error) toast(msgErro(error), 'erro'); else { reg.pdf_revisao = reg.revisao; reg.pdf_atualizado = true; }
 }
