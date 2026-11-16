@@ -1,7 +1,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_KEY, SCHEMA, EMPRESA } from './config.js';
 // Versão publicada: muda a cada atualização para o navegador não usar telas antigas do cache
-const VERSAO = '202611161400'; // atualizar a cada publicação
+const VERSAO = '202611161500'; // atualizar a cada publicação
 import { h, toast, modal } from './util.js';
 
 // Chegou pelo link de "Esqueci minha senha" do e-mail?
@@ -26,6 +26,7 @@ const ROTAS = [
   { hash: '#/orcamentos', nome: 'Orçamentos', ico: '📝', modulo: 'orcamentos' },
   { hash: '#/pedidos', nome: 'Pedidos', ico: '📦', modulo: 'pedidos' },
   { grupo: 'Produção' },
+  { hash: '#/itens', nome: 'Itens dos pedidos', ico: '📋', modulo: 'itens' },
   { hash: '#/corte', nome: 'Corte', ico: '✂️', modulo: 'corte' },
   { hash: '#/producao', nome: 'Produção (Kanban)', ico: '🧵', modulo: 'producao' },
   { hash: '#/remessas', nome: 'Remessas', ico: '🧾', modulo: 'remessas' },

@@ -37,7 +37,7 @@ export async function render(el) {
 
   el.querySelector('#busca').onchange = (e) => { busca = e.target.value; render(el); };
   el.querySelector('#atras').onchange = (e) => { soAtrasados = e.target.checked; render(el); };
-  el.querySelector('#nova-op')?.addEventListener('click', () => novaOp(() => render(el)));
+  el.querySelector('#nova-op')?.addEventListener('click', () => { location.hash = '#/itens'; });
   el.querySelectorAll('[data-acao]').forEach(b => b.onclick = (ev) => {
     ev.stopPropagation();
     const d = b.dataset, volta = () => render(el);

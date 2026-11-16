@@ -239,3 +239,10 @@ textarea.inp{width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:
 .ac-caixa button:hover{background:#f3f2ee}
 .ac-caixa small{display:block;color:var(--sub);font-size:.78rem}
 .ac-info{position:sticky;top:0;background:#f3f2ee;font-size:.75rem;color:var(--sub);font-weight:700;padding:6px 11px}
+
+.tab-itens tr.grupo-ped td{background:#ece9e2;border-top:2px solid #d8d3ca}
+.tab-itens tr.sel td{background:#fbf5e8}
+.tab-itens tr.apagado td{color:#9a958c}
+.tab-itens input[type=checkbox]{width:18px;height:18px;min-height:0;margin:0;cursor:pointer}
+.barra-sel{position:fixed;left:0;right:0;bottom:0;z-index:150;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;background:#fff;border-top:2px solid var(--acento);padding:12px 18px;box-shadow:0 -6px 18px rgba(40,38,34,.12)}
+@media(min-width:861px){.barra-sel{left:240px}}
