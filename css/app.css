@@ -234,3 +234,8 @@ textarea.inp{width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:
 .ficha .grade td{text-align:center;font-size:13pt;font-weight:800;border:1px solid #d8d4cd}
 .ficha .grade th{text-align:center}
 .ficha .grade .z{color:#c9c4bb;font-weight:400}
+.ac-caixa{position:absolute;z-index:300;background:#fff;border:1px solid #cfcac2;border-radius:10px;box-shadow:0 12px 28px rgba(40,38,34,.18);max-height:300px;overflow:auto;max-width:min(520px,94vw)}
+.ac-caixa button{display:block;width:100%;text-align:left;background:#fff;border:0;border-bottom:1px solid #f0ede8;padding:8px 11px;cursor:pointer;font:inherit}
+.ac-caixa button:hover{background:#f3f2ee}
+.ac-caixa small{display:block;color:var(--sub);font-size:.78rem}
+.ac-info{position:sticky;top:0;background:#f3f2ee;font-size:.75rem;color:var(--sub);font-weight:700;padding:6px 11px}

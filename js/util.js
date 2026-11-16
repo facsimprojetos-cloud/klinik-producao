@@ -173,3 +173,37 @@ export function cabecalhoDoc(titulo, linha2) {
   return `<div class="topo"><div class="logo">KLINIK<small>UNIFORMES PREMIUM</small></div>
     <div class="tit"><b>${h(titulo)}</b>${h(linha2 || '')}</div></div>`;
 }
+
+// ---------- Lista suspensa com busca (abre ao clicar, filtra ao digitar) ----------
+// fonte(): [{valor, rotulo, sub}] · aoEscolher(item)
+let caixaAberta = null;
+function fecharCaixa() { caixaAberta?.remove(); caixaAberta = null; }
+document.addEventListener('mousedown', (e) => { if (caixaAberta && !e.target.closest('.ac-caixa') && !e.target.closest('[data-ac]')) fecharCaixa(); });
+window.addEventListener('scroll', (e) => { if (caixaAberta && !e.target.closest?.('.ac-caixa')) fecharCaixa(); }, true);
+export function autocompletar(input, fonte, aoEscolher) {
+  if (!input || input.readOnly || input.disabled) return;
+  input.dataset.ac = '1'; input.setAttribute('autocomplete', 'off');
+  const abrir = () => {
+    fecharCaixa();
+    const t = input.value.trim().toLowerCase();
+    const todos = fonte();
+    let lista = todos.filter(x => !t || (x.rotulo + ' ' + (x.sub || '')).toLowerCase().includes(t));
+    if (!lista.length && t) lista = todos; // nada bateu: mostra tudo
+    const r = input.getBoundingClientRect();
+    const cx = document.createElement('div');
+    cx.className = 'ac-caixa';
+    cx.style.cssText = `left:${r.left + window.scrollX}px;top:${r.bottom + window.scrollY + 2}px;min-width:${Math.max(r.width, 240)}px`;
+    cx.innerHTML = `<div class="ac-info">${lista.length} opção(ões)${t ? ' · filtrando por "' + h(input.value.trim()) + '"' : ''}</div>` +
+      (lista.slice(0, 80).map((x, i) => `<button type="button" data-i="${i}"><b>${h(x.rotulo)}</b>${x.sub ? `<small>${h(x.sub)}</small>` : ''}</button>`).join('') || '<div class="ac-info">Nenhum cadastro. Pode digitar livremente.</div>');
+    cx.querySelectorAll('button').forEach(b => b.onmousedown = (e) => { e.preventDefault(); const it = lista[+b.dataset.i]; input.value = it.valor; fecharCaixa(); aoEscolher && aoEscolher(it); });
+    document.body.appendChild(cx); caixaAberta = cx;
+  };
+  input.addEventListener('focus', abrir);
+  input.addEventListener('click', abrir);
+  input.addEventListener('input', abrir);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') fecharCaixa();
+    if (e.key === 'Enter' && caixaAberta) { const b = caixaAberta.querySelector('button'); if (b) { e.preventDefault(); b.dispatchEvent(new MouseEvent('mousedown')); } }
+    if (e.key === 'Tab') fecharCaixa();
+  });
+}

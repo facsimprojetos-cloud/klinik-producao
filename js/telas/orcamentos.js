@@ -1,8 +1,8 @@
 import { db, tem } from '../app.js';
 import { EMPRESA_PDF } from '../config.js';
 import {
-  h, num, moeda, data, chip, ler, toast, msgErro, confirmar, hojeISO, cadastros, limparCache,
-  ETAPAS, NOME_ETAPA, etapasTexto, arr, imprimirHtml, cabecalhoDoc
+  h, num, moeda, data, chip, ler, toast, msgErro, confirmar, hojeISO, cadastros, limparCache, modal, chamar,
+  ETAPAS, NOME_ETAPA, etapasTexto, arr, imprimirHtml, cabecalhoDoc, autocompletar
 } from '../util.js';
 import { tabelaFuncionarios } from '../acoes.js';
 
@@ -70,7 +70,7 @@ function itemVazio(tipo = 'PRODUTO') {
 }
 
 async function abrir(id) {
-  cad = await cadastros(db);
+  cad = await cadastros(db, true);
   if (!id) {
     reg = { id: null, numero: '', status: 'ELABORACAO', revisao: 0, cliente_id: null, cliente_nome: '', data: hojeISO(), vendedor: '', pre_venda: '',
       forma_pagamento: '', parcelas: '', prazo_dias_uteis: 45, previsao_entrega: '', validade_dias: 15, observacoes: '', itens: [itemVazio()] };
@@ -103,23 +103,18 @@ function grade(funcs) {
 function htmlItem(it, i) {
   const fr = it.tipo === 'FRETE', pr = it.tipo === 'PRODUTO', porLista = !fr && it.funcionarios.length > 0;
   const qtd = porLista ? it.funcionarios.reduce((a, f) => a + (+f.quantidade || 1), 0) : it.quantidade;
-  const coresTecido = (() => {
-    const t = cad.tecidos.find(x => x.nome.toLowerCase() === String(it.tecido || '').toLowerCase());
-    const ids = t ? cad.tecidoCores.filter(tc => tc.tecido_id === t.id).map(tc => tc.cor_id) : [];
-    return ids.length ? cad.cores.filter(c => ids.includes(c.id)) : cad.cores;
-  })();
   return `<article class="item-orc" data-item="${i}">
     <div class="io-cab"><b>Item ${i + 1}</b>
       <div class="acoes"><select class="inp" data-i="${i}" data-k="tipo" style="min-height:34px;padding:4px 8px;width:auto">${['PRODUTO', 'SERVICO', 'FRETE'].map(t => `<option ${it.tipo === t ? 'selected' : ''} value="${t}">${t === 'SERVICO' ? 'Serviço' : t === 'FRETE' ? 'Frete' : 'Produto'}</option>`).join('')}</select>
         <button class="btn peq perigo" data-rem-item="${i}">Remover</button></div></div>
     <div class="io-corpo">
       <div class="grade g4">
-        ${pr ? `<label class="campo">Produto cadastrado<input data-i="${i}" data-prod list="dl-prod" placeholder="Referência ou nome" value="${h(it.referencia ? it.referencia + ' · ' + it.descricao : '')}"></label>` : ''}
+        ${pr ? `<label class="campo">Produto cadastrado<input data-i="${i}" data-prod placeholder="Clique para escolher" value="${h(it.referencia ? it.referencia + ' · ' + it.descricao : '')}"></label>` : ''}
         ${pr ? campoItem(i, 'referencia', 'Referência') : ''}
         ${campoItem(i, 'descricao', 'Descrição *')}
-        ${pr ? campoItem(i, 'tecido', 'Tecido', { list: 'dl-tecido' }) : ''}
-        ${pr ? `${campoItem(i, 'cor', 'Cor', { list: 'dl-cor-' + i })}<datalist id="dl-cor-${i}">${coresTecido.map(c => `<option value="${h(c.nome)}">`).join('')}</datalist>` : ''}
-        ${!fr ? `<label class="campo">${porLista ? 'Grade (pela lista)' : 'Tamanho'}<input data-i="${i}" data-k="tamanho" list="dl-tam" value="${h(porLista ? grade(it.funcionarios) : it.tamanho || '')}" ${porLista ? 'readonly' : ''}></label>` : ''}
+        ${pr ? campoItem(i, 'tecido', 'Tecido') : ''}
+        ${pr ? campoItem(i, 'cor', 'Cor') : ''}
+        ${!fr ? `<label class="campo">${porLista ? 'Grade (pela lista)' : 'Tamanho'}<input data-i="${i}" data-k="tamanho" value="${h(porLista ? grade(it.funcionarios) : it.tamanho || '')}" ${porLista ? 'readonly' : ''}></label>` : ''}
         <label class="campo">Quantidade<input data-i="${i}" data-k="quantidade" type="number" min="1" step="1" value="${qtd}" ${porLista ? 'readonly' : ''}></label>
         ${campoItem(i, 'valor_unitario', 'Valor unitário (R$)', { type: 'number' })}
       </div>
@@ -134,7 +129,7 @@ function htmlItem(it, i) {
         ${it.funcionarios.length ? `<div class="tabela-wrap func-tab" style="margin-top:6px"><table><thead><tr><th>Nome *</th><th>Qtd</th><th>Tam. *</th>${MED.map(([, r]) => `<th>${r}</th>`).join('')}<th>Outras</th><th>Ajustes</th><th>Obs.</th><th></th></tr></thead>
           <tbody>${it.funcionarios.map((f, j) => `<tr><td><input data-i="${i}" data-f="${j}" data-fk="nome" value="${h(f.nome || '')}" style="min-width:140px"></td>
             <td><input data-i="${i}" data-f="${j}" data-fk="quantidade" type="number" min="1" value="${f.quantidade || 1}"></td>
-            <td><input data-i="${i}" data-f="${j}" data-fk="tamanho" list="dl-tam" value="${h(f.tamanho || '')}"></td>
+            <td><input data-i="${i}" data-f="${j}" data-fk="tamanho" value="${h(f.tamanho || '')}"></td>
             ${MED.map(([k]) => `<td><input data-i="${i}" data-f="${j}" data-fk="${k}" inputmode="decimal" value="${h(f[k] ?? '')}"></td>`).join('')}
             <td><input data-i="${i}" data-f="${j}" data-fk="outras" value="${h(f.outras || '')}"></td><td><input data-i="${i}" data-f="${j}" data-fk="ajustes" value="${h(f.ajustes || '')}"></td>
             <td><input data-i="${i}" data-f="${j}" data-fk="observacao" value="${h(f.observacao || '')}"></td>
@@ -165,28 +160,23 @@ function editor() {
       <button class="btn" id="voltar">← Voltar ao quadro</button></div>
     <fieldset ${tr ? 'disabled' : ''} style="border:0;padding:0;margin:0">
     <div class="card"><div class="grade g4">
-      <label class="campo" style="grid-column:span 2">Cliente *<input data-cab="cliente_nome" list="dl-cli" value="${h(o.cliente_nome || '')}" placeholder="Digite para buscar no cadastro"></label>
+      <div class="campo" style="grid-column:span 2">Cliente *<div style="display:flex;gap:6px;margin-top:4px"><input class="inp" data-cab="cliente_nome" value="${h(o.cliente_nome || '')}" placeholder="Clique para escolher ou digite para buscar" style="margin:0"><button type="button" class="btn" id="novo-cli" title="Cadastrar cliente novo">+ Novo</button></div>
+        ${o.cliente_id ? '<small class="muted">Cliente do cadastro</small>' : o.cliente_nome ? '<small style="color:var(--alerta)">Nome livre (não está no cadastro). Use "+ Novo" para cadastrar.</small>' : ''}</div>
       ${cab('data', 'Data do orçamento', 'date')}
       ${cab('validade_dias', 'Validade (dias)', 'number', 'min="0"')}
-      ${cab('vendedor', 'Vendedor', 'text', 'list="dl-vend"')}
+      ${cab('vendedor', 'Vendedor')}
       ${cab('pre_venda', 'Pré-venda / responsável')}
-      ${cab('forma_pagamento', 'Forma de pagamento', 'text', 'list="dl-forma"')}
+      ${cab('forma_pagamento', 'Forma de pagamento')}
       ${cab('parcelas', 'Parcelas', 'number', 'min="0"')}
       ${cab('prazo_dias_uteis', 'Prazo (dias úteis)', 'number', 'min="0"')}
       ${cab('previsao_entrega', 'Previsão de entrega', 'date')}
       <label class="campo" style="grid-column:1/-1">Observações e condições para o cliente<textarea data-cab="observacoes" class="inp">${h(o.observacoes || '')}</textarea></label>
     </div>
-    ${o.cliente_id ? '' : '<p class="muted peq" style="margin:6px 0 0">Cliente novo? Ele é cadastrado em Cadastros › Clientes; no orçamento basta o nome.</p>'}</div>
+    </div>
     <div class="cab"><h2>Produtos e serviços</h2><div class="acoes">
       <button class="btn" data-add="PRODUTO">+ Produto</button><button class="btn" data-add="SERVICO">+ Serviço</button><button class="btn" data-add="FRETE">+ Frete</button></div></div>
     <div id="itens">${o.itens.map(htmlItem).join('')}</div>
     </fieldset>
-    <datalist id="dl-cli">${cad.clientes.map(c => `<option value="${h(c.nome)}">${h(c.documento || '')}</option>`).join('')}</datalist>
-    <datalist id="dl-prod">${cad.produtos.filter(p => p.ativo).map(p => `<option value="${h(p.referencia + ' · ' + p.nome)}">`).join('')}</datalist>
-    <datalist id="dl-tecido">${cad.tecidos.map(x => `<option value="${h(x.nome)}">`).join('')}</datalist>
-    <datalist id="dl-tam">${cad.tamanhos.map(x => `<option value="${h(x.codigo)}">`).join('')}</datalist>
-    <datalist id="dl-vend">${cad.vendedores.map(x => `<option value="${h(x.nome)}">`).join('')}</datalist>
-    <datalist id="dl-forma">${cad.formas.map(x => `<option value="${h(x.nome)}">`).join('')}</datalist>
     <div class="total-barra"><div>Total do orçamento <b id="tot">${moeda(t)}</b></div>
       <div class="acoes">
         ${!tr ? `<button class="btn pri" id="salvar">${sujo ? 'Salvar' : 'Salvo'}</button>` : ''}
@@ -216,7 +206,66 @@ function editor() {
     marcar(); editor();
   });
   el.querySelector('#salvar').onclick = salvar;
+  el.querySelector('#novo-cli').onclick = novoCliente;
+  ligarListas();
   ligarSaida();
+}
+
+function aplicarProduto(i, p) {
+  const it = reg.itens[i];
+  it.produto_id = p.id; it.referencia = p.referencia; it.descricao = p.nome;
+  if (p.preco != null && !+it.valor_unitario) it.valor_unitario = p.preco;
+  if (p.tecido_base && !it.tecido) it.tecido = p.tecido_base;
+  marcar(); editor();
+}
+
+function coresDoTecido(tecido) {
+  const t = cad.tecidos.find(x => x.nome.toLowerCase() === String(tecido || '').toLowerCase());
+  const ids = t ? cad.tecidoCores.filter(tc => tc.tecido_id === t.id).map(tc => tc.cor_id) : [];
+  return ids.length ? cad.cores.filter(c => ids.includes(c.id)) : cad.cores;
+}
+
+// Listas suspensas (abrem ao clicar) ligadas aos cadastros
+function ligarListas() {
+  const el = el0, simples = (lista) => () => lista.map(v => ({ valor: v, rotulo: v }));
+  autocompletar(el.querySelector('[data-cab="cliente_nome"]'),
+    () => cad.clientes.map(c => ({ valor: c.nome, rotulo: c.nome, sub: [c.razao_social, c.documento, c.contato].filter(Boolean).join(' · '), id: c.id })),
+    (c) => { reg.cliente_nome = c.valor; reg.cliente_id = c.id; marcar(); editor(); });
+  autocompletar(el.querySelector('[data-cab="vendedor"]'), simples(cad.vendedores.map(v => v.nome)), (x) => { reg.vendedor = x.valor; marcar(); });
+  autocompletar(el.querySelector('[data-cab="forma_pagamento"]'), simples(cad.formas.map(v => v.nome)), (x) => { reg.forma_pagamento = x.valor; marcar(); });
+  el.querySelectorAll('[data-prod]').forEach(inp => autocompletar(inp,
+    () => cad.produtos.filter(p => p.ativo).map(p => ({ valor: p.referencia + ' · ' + p.nome, rotulo: p.referencia + ' · ' + p.nome, sub: p.preco != null ? moeda(p.preco) : '', p })),
+    (x) => aplicarProduto(+inp.dataset.i, x.p)));
+  el.querySelectorAll('[data-k="tecido"]').forEach(inp => autocompletar(inp, simples(cad.tecidos.map(t => t.nome)),
+    (x) => { reg.itens[+inp.dataset.i].tecido = x.valor; marcar(); editor(); }));
+  el.querySelectorAll('[data-k="cor"]').forEach(inp => autocompletar(inp,
+    () => coresDoTecido(reg.itens[+inp.dataset.i].tecido).map(c => ({ valor: c.nome, rotulo: c.nome })),
+    (x) => { reg.itens[+inp.dataset.i].cor = x.valor; marcar(); }));
+  el.querySelectorAll('[data-k="tamanho"]').forEach(inp => autocompletar(inp, simples(cad.tamanhos.map(t => t.codigo)),
+    (x) => { reg.itens[+inp.dataset.i].tamanho = x.valor; marcar(); }));
+  el.querySelectorAll('[data-fk="tamanho"]').forEach(inp => autocompletar(inp, simples(cad.tamanhos.map(t => t.codigo)),
+    (x) => { reg.itens[+inp.dataset.i].funcionarios[+inp.dataset.f].tamanho = x.valor; marcar(); editor(); }));
+}
+
+function novoCliente() {
+  modal({
+    titulo: 'Novo cliente',
+    corpo: `<form id="fcli" class="grade g2">
+      <label class="campo" style="grid-column:1/-1">Nome fantasia *<input name="nome" required value="${h(reg.cliente_id ? '' : reg.cliente_nome || '')}"></label>
+      <label class="campo">Razão social<input name="razao_social"></label><label class="campo">CNPJ / CPF<input name="documento"></label>
+      <label class="campo">Contato<input name="contato"></label><label class="campo">Celular / WhatsApp<input name="telefone"></label>
+      <label class="campo">E-mail<input name="email" type="email"></label><label class="campo">Inscrição estadual<input name="inscricao_estadual"></label>
+      <label class="campo" style="grid-column:1/-1">Endereço completo<input name="endereco"></label></form>`,
+    botoes: [{ texto: 'Cancelar' }, { texto: 'Cadastrar', classe: 'pri', acao: async (m) => {
+      const f = m.querySelector('#fcli'); if (!f.reportValidity()) return false;
+      const d = {}; new FormData(f).forEach((v, k) => { v = String(v).trim(); if (v) d[k] = v; });
+      const { data: c, error } = await db.from('clientes').insert(d).select().single();
+      if (error) { toast(msgErro(error), 'erro'); return false; }
+      limparCache(); cad = await cadastros(db, true);
+      reg.cliente_nome = c.nome; reg.cliente_id = c.id; marcar(); editor();
+      toast('Cliente cadastrado.', 'ok');
+    } }]
+  });
 }
 
 function ligarSaida() {
@@ -255,7 +304,7 @@ function aoMudar(e) {
   const i = +x.dataset.i, it = reg.itens[i];
   if (x.dataset.prod !== undefined) {
     const p = cad.produtos.find(p => p.referencia + ' · ' + p.nome === x.value || p.referencia.toLowerCase() === x.value.toLowerCase());
-    if (p) { it.produto_id = p.id; it.referencia = p.referencia; it.descricao = p.nome; if (p.preco != null && !+it.valor_unitario) it.valor_unitario = p.preco; if (p.tecido_base && !it.tecido) it.tecido = p.tecido_base; marcar(); editor(); }
+    if (p) aplicarProduto(i, p);
     return;
   }
   if (x.dataset.etapa) {
