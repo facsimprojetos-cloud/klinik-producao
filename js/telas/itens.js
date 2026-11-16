@@ -11,7 +11,6 @@ const sel = new Map();      // pedido_item_id -> { qtd, etapas, linha }
 let linhas = [];
 
 const chaveEtapas = (i) => arr(i.etapas).join(',');
-const etapasSel = () => sel.size ? [...sel.values()][0].etapas : null;
 
 export async function render(el) {
   linhas = await ler(db.from('v_detalhe_venda').select('*')
@@ -38,11 +37,10 @@ function desenhar(el) {
     if (!gr) grupos.push(gr = { id: g, itens: [] });
     gr.itens.push(i);
   });
-  const eSel = etapasSel();
   const linhaHtml = (i) => {
     const s = sel.get(i.pedido_item_id);
-    const bloqueado = i.saldo <= 0 || !podeOp || (eSel !== null && chaveEtapas(i) !== eSel);
-    const motivo = i.saldo <= 0 ? 'Item já está todo em OP' : !podeOp ? 'Precisa do perfil produção' : bloqueado ? 'Etapas diferentes dos itens já marcados' : '';
+    const bloqueado = i.saldo <= 0 || !podeOp;
+    const motivo = i.saldo <= 0 ? 'Item já está todo em OP' : !podeOp ? 'Precisa do perfil produção' : '';
     return `<tr class="${s ? 'sel' : ''} ${i.saldo <= 0 ? 'apagado' : ''}" data-id="${i.pedido_item_id}">
       <td><input type="checkbox" data-sel="${i.pedido_item_id}" ${s ? 'checked' : ''} ${bloqueado && !s ? 'disabled' : ''} title="${h(motivo)}"></td>
       ${agrupar ? '' : `<td class="forte">${h(i.pedido_numero)}</td><td>${h(i.cliente_nome)}</td>`}
@@ -59,7 +57,7 @@ function desenhar(el) {
     <th class="n">Qtd</th><th class="n">Em OP</th><th class="n">Saldo</th><th class="n">Na OP</th><th>OPs</th></tr></thead>`;
   const corpo = grupos.map(g => {
     const i0 = g.itens[0];
-    const livres = g.itens.filter(i => i.saldo > 0 && podeOp && (eSel === null || chaveEtapas(i) === eSel));
+    const livres = g.itens.filter(i => i.saldo > 0 && podeOp);
     const cabGrupo = agrupar ? `<tr class="grupo-ped"><td><input type="checkbox" data-grupo="${g.id}" ${livres.length && livres.every(i => sel.has(i.pedido_item_id)) ? 'checked' : ''} ${livres.length ? '' : 'disabled'} title="Marcar os itens deste pedido"></td>
       <td colspan="${cols - 1}"><b>Pedido ${h(i0.pedido_numero)}</b> · ${h(i0.cliente_nome)} · entrega ${data(i0.previsao_entrega) || '—'}
       ${i0.previsao_entrega && i0.previsao_entrega < new Date().toISOString().slice(0, 10) ? chip('Atrasado', 'erro') : ''}
@@ -81,7 +79,6 @@ function desenhar(el) {
       <label class="campo" style="max-width:200px;flex:0">&nbsp;<span style="display:flex;gap:6px;align-items:center;min-height:42px;white-space:nowrap">
         <input type="checkbox" id="agrupar" ${agrupar ? 'checked' : ''} style="width:auto;min-height:0;margin:0"> Agrupar por pedido</span></label>
     </div>
-    ${eSel !== null ? `<p class="peq muted" style="margin:-4px 0 8px">Marcando itens com etapas: <b>${h(etapasTexto(eSel ? eSel.split(',') : []))}</b>. Itens com outras etapas ficam bloqueados (uma OP só junta itens que caminham igual).</p>` : ''}
     <div class="tabela-wrap"><table class="tab-itens">${cabTabela}<tbody>${corpo}</tbody></table></div>
     <div style="height:70px"></div>
     ${sel.size ? `<div class="barra-sel">
@@ -99,15 +96,10 @@ function desenhar(el) {
     re();
   });
   el.querySelectorAll('[data-grupo]').forEach(c => c.onchange = () => {
-    const e0 = etapasSel();
     const itens = linhas.filter(i => i.pedido_id === c.dataset.grupo && i.saldo > 0);
     if (!itens.length) return re();
-    if (c.checked) {
-      const alvo = e0 ?? chaveEtapas(itens[0]);
-      const fora = itens.filter(i => chaveEtapas(i) !== alvo);
-      itens.filter(i => chaveEtapas(i) === alvo).forEach(i => sel.set(i.pedido_item_id, { qtd: i.saldo, etapas: alvo, linha: i }));
-      if (fora.length) toast(`${fora.length} item(ns) deste pedido têm outras etapas e ficaram de fora.`, 'info');
-    } else itens.forEach(i => sel.delete(i.pedido_item_id));
+    if (c.checked) itens.forEach(i => sel.set(i.pedido_item_id, { qtd: i.saldo, etapas: chaveEtapas(i), linha: i }));
+    else itens.forEach(i => sel.delete(i.pedido_item_id));
     re();
   });
   el.querySelectorAll('[data-q]').forEach(inp => inp.onchange = () => {
@@ -124,7 +116,7 @@ function criarOp(el) {
     <td>${h([v.linha.referencia, v.linha.descricao].filter(Boolean).join(' '))}</td><td>${h(v.linha.cor || '')}</td><td>${h(v.linha.tamanho || '')}</td><td class="n">${num(v.qtd)}</td></tr>`).join('');
   modal({
     titulo: 'Criar OP', largo: true,
-    corpo: `<p class="muted peq">Etapas da OP: <b>${h(etapasTexto(vals[0].etapas ? vals[0].etapas.split(',') : []))}</b></p>
+    corpo: `<p class="muted peq">Etapas da OP: <b>${h(etapasTexto([...new Set(vals.flatMap(v => arr(v.linha.etapas)))].sort((a, b) => ['FACCAO','SILK','BORDADO'].indexOf(a) - ['FACCAO','SILK','BORDADO'].indexOf(b))))}</b>. Cada item segue as próprias etapas.</p>
       <div class="tabela-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Produto</th><th>Cor</th><th>Tam.</th><th class="n">Qtd</th></tr></thead>
       <tbody>${resumo}</tbody></table></div>
       <div class="grade g2" style="margin-top:10px">

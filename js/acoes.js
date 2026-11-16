@@ -18,7 +18,7 @@ export async function novaOp(depois, filtroPedido = null) {
   const grupos = new Map();
   itens.forEach(i => { const k = arr(i.etapas).join(','); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(i); });
   const corpo = `
-    <p class="muted peq">Uma OP só junta itens que caminham igual na produção (mesmas etapas). Pode misturar pedidos e clientes diferentes.</p>
+    <p class="muted peq">Pode misturar pedidos, clientes e itens com etapas diferentes. Cada item segue as próprias etapas (ex.: na hora de enviar para o Silk, só aparecem os itens que têm silk).</p>
     <label class="campo">Buscar<input id="op-busca" placeholder="Produto, cor, cliente, pedido…"></label>
     ${[...grupos.entries()].map(([k, lista]) => `
       <div class="card" data-grupo="${h(k)}" style="padding:10px;margin-top:10px">
@@ -43,13 +43,6 @@ export async function novaOp(depois, filtroPedido = null) {
         const t = e.target.value.toLowerCase();
         m.querySelectorAll('tr[data-busca]').forEach(tr => tr.hidden = t && !tr.dataset.busca.includes(t));
       };
-      m.addEventListener('change', (e) => {
-        if (!e.target.matches('[data-sel]')) return;
-        const marcados = [...m.querySelectorAll('[data-sel]:checked')];
-        const g = marcados[0]?.dataset.g;
-        m.querySelectorAll('[data-sel]').forEach(c => { c.disabled = marcados.length > 0 && c.dataset.g !== g; });
-        m.querySelectorAll('[data-grupo]').forEach(c => c.style.opacity = marcados.length && c.dataset.grupo !== g ? .45 : 1);
-      });
     },
     botoes: [{ texto: 'Cancelar' }, {
       texto: 'Criar OP', classe: 'pri', acao: async (m) => {
@@ -63,6 +56,32 @@ export async function novaOp(depois, filtroPedido = null) {
         if (await confirmar('OP criada', `Imprimir a folha da <b>OP ${op.numero}</b> para o parceiro?`, 'Imprimir')) imprimirFolhaOp(op.id);
       }
     }]
+  });
+}
+
+// ---------- Desmembrar OP: peças ainda paradas vão para uma OP nova ----------
+export async function desmembrar(opId, depois) {
+  if (!tem('producao')) return toast('Desmembrar exige o perfil "producao".', 'erro');
+  const itens = (await ler(db.from('v_op_itens').select('*').eq('op_id', opId))).map(i => ({ ...i, livre: i.quantidade - i.movido }));
+  if (!itens.some(i => i.livre > 0)) return toast('Todas as peças desta OP já saíram; não há o que desmembrar.', 'erro');
+  const op = itens[0];
+  modal({
+    titulo: `Desmembrar OP ${op.op_numero}`, largo: true,
+    corpo: `<p class="muted peq">Escolha quantas peças de cada item vão para uma <b>OP nova</b>. Só dá para mover peças que ainda não foram enviadas. Para mandar só uma parte para um parceiro, você também pode simplesmente enviar uma quantidade menor.</p>
+      <div class="tabela-wrap"><table><thead><tr><th>Pedido</th><th>Item</th><th>Etapas</th><th class="n">Na OP</th><th class="n">Ainda paradas</th><th class="n">Para a OP nova</th></tr></thead>
+      <tbody>${itens.map(i => `<tr><td>${h(i.pedido_numero)}<div class="peq muted">${h(i.cliente_nome)}</div></td><td>${h(rotuloItem(i))}</td>
+        <td class="peq">${h(etapasTexto(arr(i.item_etapas)))}</td><td class="n">${num(i.quantidade)}</td><td class="n">${num(i.livre)}</td>
+        <td class="n">${i.livre > 0 ? `<input class="inp num" type="number" min="0" max="${i.livre}" value="0" data-dq="${i.op_item_id}">` : '—'}</td></tr>`).join('')}</tbody></table></div>
+      <label class="campo" style="margin-top:10px">Descrição da OP nova<input id="d-desc" placeholder="${h(op.op_descricao || '')}"></label>`,
+    botoes: [{ texto: 'Cancelar' }, { texto: 'Criar OP nova', classe: 'pri', acao: async (m) => {
+      const linhas = [...m.querySelectorAll('[data-dq]')].map(x => ({ op_item_id: x.dataset.dq, quantidade: +x.value || 0 })).filter(x => x.quantidade > 0);
+      if (!linhas.length) { toast('Informe quantas peças vão para a OP nova.', 'erro'); return false; }
+      const nova = await chamar(db, 'desmembrar_op', { p_op: opId, p_linhas: linhas, p_descricao: m.querySelector('#d-desc').value });
+      if (!nova) return false;
+      toast(`OP ${nova.numero} criada a partir da OP ${op.op_numero}.`, 'ok');
+      depois && depois();
+      if (await confirmar('OP desmembrada', `Imprimir a folha da <b>OP ${nova.numero}</b>?`, 'Imprimir')) imprimirFolhaOp(nova.id);
+    } }]
   });
 }
 
@@ -95,6 +114,7 @@ export async function enviar(opId, etapa, depois) {
           <td class="n"><input class="inp num" type="number" min="0" step="0.01" data-campo="v" placeholder="0,00"></td>
           <td class="n" data-t></td></tr>`; }).join('')}</tbody>
         <tfoot><tr class="grupo"><td colspan="3">Total</td><td class="n" id="env-tq"></td><td></td><td class="n" id="env-tv"></td></tr></tfoot></table></div>
+      <p class="peq muted" style="margin:8px 0 0">Só aparecem os itens desta OP que passam por ${h(NOME_ETAPA[etapa])}. Os outros seguem para a próxima etapa deles ou para a embalagem.</p>
       <label class="campo" style="margin-top:10px">Observação para o parceiro<input id="env-obs"></label>
       <label class="peq" style="display:block;margin-top:8px"><input type="checkbox" id="env-precos" checked> Guardar os valores como preço deste parceiro</label>`,
     aoAbrir: (m) => {

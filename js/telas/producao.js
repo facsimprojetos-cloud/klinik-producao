@@ -1,6 +1,6 @@
 import { db, tem } from '../app.js';
 import { h, num, data, chip, ler, NOME_ETAPA } from '../util.js';
-import { novaOp, enviar, confirmarSaida, excluirRemessa, receber, embalar, imprimirRomaneio, imprimirFolhaOp, chipsEtapas } from '../acoes.js';
+import { novaOp, desmembrar, enviar, confirmarSaida, excluirRemessa, receber, embalar, imprimirRomaneio, imprimirFolhaOp, chipsEtapas } from '../acoes.js';
 
 const COLUNAS = [
   { id: 'FACCAO', nome: 'Facção' }, { id: 'SILK', nome: 'Silk' }, { id: 'BORDADO', nome: 'Bordado' },
@@ -48,6 +48,7 @@ export async function render(el) {
     else if (d.acao === 'romaneio') imprimirRomaneio(d.rem);
     else if (d.acao === 'embalar') embalar(d.op, volta);
     else if (d.acao === 'folha') imprimirFolhaOp(d.op);
+    else if (d.acao === 'desmembrar') desmembrar(d.op, volta);
   });
 }
 
@@ -56,7 +57,8 @@ function cartao(c, pode) {
   let estado = '', acoes = '', cls = '';
   if (c.estado === 'AGUARDANDO_ENVIO') {
     estado = chip('Aguardando envio', 'info');
-    if (pode) acoes = `<button class="btn peq pri" data-acao="enviar" data-op="${c.op_id}" data-etapa="${c.etapa}">Enviar</button>`;
+    if (pode) acoes = `<button class="btn peq pri" data-acao="enviar" data-op="${c.op_id}" data-etapa="${c.etapa}">Enviar</button>
+      <button class="btn peq" data-acao="desmembrar" data-op="${c.op_id}">Desmembrar</button>`;
   } else if (c.estado === 'PREPARADO') {
     estado = chip(`${c.remessa_numero} · aguardando saída`, 'alerta') + `<div class="d">Para ${h(c.parceiro_nome)}</div>`;
     if (pode) acoes = `<button class="btn peq pri" data-acao="saida" data-rem="${c.remessa_id}">Confirmar saída</button>
