@@ -1,6 +1,6 @@
 # KLINIK — Gestão (orçamentos, pedidos e produção)
 
-App web (HTML + JavaScript puro, sem build) publicado no GitHub Pages, com banco no Supabase (projeto **PROJETOS**, schema **`klinik`**). Mesmo padrão do app YAZFIT.
+App web (HTML + JavaScript puro, sem build) publicado no GitHub Pages em **https://klinik.gutgestao.com.br**, com banco no Supabase (projeto **PROJETOS**, schema **`klinik`**). Mesmo padrão do app YAZFIT.
 
 Substitui o web app do Google Apps Script ligado à planilha "KLINIK 2".
 
@@ -43,3 +43,6 @@ js/telas/*.js       uma tela por arquivo
 ```
 
 As regras de negócio ficam no banco (funções `klinik.*`, com checagem de perfil); o front só chama essas funções e lê as views `v_*`. PDFs são gerados pela impressão do navegador ("Salvar como PDF").
+
+## Publicação
+Branch `main` publicada pelo GitHub Pages a partir da raiz. Domínio: registro **CNAME** `klinik` → `facsimprojetos-cloud.github.io` no DNS de `gutgestao.com.br` (arquivo `CNAME` na raiz).
