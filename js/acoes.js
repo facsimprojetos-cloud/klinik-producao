@@ -10,53 +10,12 @@ const rotuloItem = (x) => [x.referencia, x.descricao, x.cor, x.tamanho].filter(B
 
 // ---------- Nova OP: itens do saldo com as mesmas etapas ----------
 export async function novaOp(depois, filtroPedido = null) {
-  if (!tem('producao')) return toast('Criar OP exige o perfil "producao".', 'erro');
-  let q = db.from('v_itens_sem_op').select('*').order('previsao_entrega', { ascending: true, nullsFirst: false }).order('pedido_numero');
-  if (filtroPedido) q = q.eq('pedido_id', filtroPedido);
-  const itens = await ler(q);
-  if (!itens.length) return toast('Não há itens com saldo para entrar em OP.', 'erro');
-  const grupos = new Map();
-  itens.forEach(i => { const k = arr(i.etapas).join(','); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(i); });
-  const corpo = `
-    <p class="muted peq">Pode misturar pedidos, clientes e itens com etapas diferentes. Cada item segue as próprias etapas (ex.: na hora de enviar para o Silk, só aparecem os itens que têm silk).</p>
-    <label class="campo">Buscar<input id="op-busca" placeholder="Produto, cor, cliente, pedido…"></label>
-    ${[...grupos.entries()].map(([k, lista]) => `
-      <div class="card" data-grupo="${h(k)}" style="padding:10px;margin-top:10px">
-        <div class="forte">${h(etapasTexto(k ? k.split(',') : []))}</div>
-        <div class="tabela-wrap" style="margin-top:6px"><table>
-          <thead><tr><th></th><th>Pedido</th><th>Cliente</th><th>Item</th><th>Silk / bordado</th><th class="n">Saldo</th><th class="n">Na OP</th></tr></thead>
-          <tbody>${lista.map(i => `<tr data-busca="${h([i.pedido_numero, i.cliente_nome, rotuloItem(i)].join(' ').toLowerCase())}">
-            <td><input type="checkbox" data-sel="${i.pedido_item_id}" data-g="${h(k)}"></td>
-            <td class="forte">${h(i.pedido_numero)}</td><td>${h(i.cliente_nome)}</td><td>${h(rotuloItem(i))}</td>
-            <td class="peq">${h([i.silk_desc && 'Silk: ' + i.silk_desc, i.bordado_desc && 'Bordado: ' + i.bordado_desc].filter(Boolean).join(' · '))}</td>
-            <td class="n">${num(i.saldo)}</td>
-            <td class="n"><input class="inp num" type="number" min="1" max="${i.saldo}" value="${i.saldo}" data-q="${i.pedido_item_id}"></td></tr>`).join('')}</tbody></table></div>
-      </div>`).join('')}
-    <div class="grade g2" style="margin-top:10px">
-      <label class="campo">Descrição da OP<input id="op-desc" placeholder="Ex.: Calças retas brancas"></label>
-      <label class="campo">Observação<input id="op-obs"></label>
-    </div>`;
-  modal({
-    titulo: 'Nova OP', corpo, largo: true,
-    aoAbrir: (m) => {
-      m.querySelector('#op-busca').oninput = (e) => {
-        const t = e.target.value.toLowerCase();
-        m.querySelectorAll('tr[data-busca]').forEach(tr => tr.hidden = t && !tr.dataset.busca.includes(t));
-      };
-    },
-    botoes: [{ texto: 'Cancelar' }, {
-      texto: 'Criar OP', classe: 'pri', acao: async (m) => {
-        const linhas = [...m.querySelectorAll('[data-sel]:checked')].map(c => ({
-          pedido_item_id: c.dataset.sel, quantidade: +m.querySelector(`[data-q="${c.dataset.sel}"]`).value || 0 }));
-        if (!linhas.length) { toast('Marque pelo menos um item.', 'erro'); return false; }
-        const op = await chamar(db, 'criar_op', { p_itens: linhas, p_descricao: m.querySelector('#op-desc').value, p_observacao: m.querySelector('#op-obs').value });
-        if (!op) return false;
-        toast(`OP ${op.numero} criada.`, 'ok');
-        depois && depois();
-        if (await confirmar('OP criada', `Imprimir a folha da <b>OP ${op.numero}</b> para o parceiro?`, 'Imprimir')) imprimirFolhaOp(op.id);
-      }
-    }]
-  });
+  // OP agora é montada na tela "Itens dos pedidos" (só peças cortadas)
+  if (filtroPedido) {
+    const [p] = await ler(db.from('pedidos').select('numero').eq('id', filtroPedido));
+    if (p) sessionStorage.setItem('itens_busca', p.numero);
+  }
+  location.hash = '#/itens';
 }
 
 // ---------- Encaminhar peças concluídas numa etapa (para outra etapa ou embalagem) ----------

@@ -1,40 +1,89 @@
 import { db, tem } from '../app.js';
 import { h, num, data, chip, ler, NOME_ETAPA } from '../util.js';
-import { novaOp, desmembrar, encaminhar, enviar, confirmarSaida, excluirRemessa, receber, embalar, imprimirRomaneio, imprimirFolhaOp, chipsEtapas } from '../acoes.js';
+import { desmembrar, encaminhar, enviar, confirmarSaida, excluirRemessa, receber, embalar, imprimirRomaneio, imprimirFolhaOp, chipsEtapas } from '../acoes.js';
 
 const COLUNAS = [
-  { id: 'FACCAO', nome: 'Facção' }, { id: 'SILK', nome: 'Silk' }, { id: 'BORDADO', nome: 'Bordado' },
+  { id: 'CORTADO', nome: 'Cortado · gerar OP' },
+  { id: 'FACCAO', nome: 'Facção', etapa: true }, { id: 'SILK', nome: 'Silk', etapa: true }, { id: 'BORDADO', nome: 'Bordado', etapa: true },
   { id: 'EMBALAGEM', nome: 'Embalagem' }, { id: 'PRONTO', nome: 'Pronto para entrega' },
+];
+// quando uma etapa está aberta, ela vira um Kanban próprio com estas colunas
+const SUB = [
+  { id: 'AGUARDANDO_ENVIO', nome: 'Aguardando envio' }, { id: 'PREPARADO', nome: 'Remessa preparada' },
+  { id: 'COM_PARCEIRO', nome: 'Com o parceiro' }, { id: 'CONCLUIDO', nome: 'Retornou · aguardando próximo passo' },
 ];
 let busca = '';
 let soAtrasados = false;
+let aberta = null;   // etapa expandida (FACCAO, SILK, BORDADO) ou null
 
 const colunaDe = (c) => c.local === 'ETAPA' ? c.etapa : c.local;
 
 export async function render(el) {
-  const [cards, semOp] = await Promise.all([
+  const [cards, itens] = await Promise.all([
     ler(db.from('v_kanban').select('*').order('op_numero')),
-    ler(db.from('v_itens_sem_op').select('saldo')),
+    ler(db.from('v_detalhe_venda').select('*').gt('saldo', 0)),
   ]);
-  const pecasSemOp = semOp.reduce((a, x) => a + x.saldo, 0);
+  const pecasSemOp = itens.reduce((a, x) => a + x.saldo, 0);
   const pode = tem('producao');
+  const t = busca.toLowerCase();
   const filtrados = cards.filter(c => (!soAtrasados || c.atrasado) &&
-    (!busca || [c.op_numero, 'OP ' + c.op_numero, c.op_descricao, c.pedidos, c.itens, c.parceiro_nome, c.remessa_numero].join(' ').toLowerCase().includes(busca.toLowerCase())));
+    (!t || [c.op_numero, 'OP ' + c.op_numero, c.op_descricao, c.pedidos, c.itens, c.parceiro_nome, c.remessa_numero].join(' ').toLowerCase().includes(t)));
+  // coluna "Cortado": itens já cortados que ainda não estão em OP, um cartão por pedido
+  const cortados = new Map();
+  itens.filter(i => i.disponivel_op > 0).forEach(i => {
+    if (!cortados.has(i.pedido_id)) cortados.set(i.pedido_id, { ...i, pecas: 0, lista: [] });
+    const g = cortados.get(i.pedido_id); g.pecas += i.disponivel_op; g.lista.push(i);
+  });
+  const hoje = new Date().toISOString().slice(0, 10);
+  const cardsCortado = [...cortados.values()]
+    .filter(g => (!soAtrasados || (g.previsao_entrega && g.previsao_entrega < hoje)) &&
+      (!t || [g.pedido_numero, g.cliente_nome, ...g.lista.map(i => i.descricao + ' ' + (i.cor || ''))].join(' ').toLowerCase().includes(t)))
+    .sort((a, b) => String(a.previsao_entrega || '9').localeCompare(String(b.previsao_entrega || '9')));
+  const emCorte = itens.filter(i => i.disponivel_op <= 0 && i.corte_status !== 'CORTADO').reduce((a, i) => a + i.saldo, 0);
+
+  const cartaoCortado = (g) => {
+    const atras = g.previsao_entrega && g.previsao_entrega < hoje;
+    return `<article class="kcard cortado ${atras ? 'atrasado' : ''}">
+      <div class="t"><span>Pedido ${h(g.pedido_numero)}</span><span class="q">${num(g.pecas)} pç</span></div>
+      <div class="d"><b>${h(g.cliente_nome)}</b>${g.previsao_entrega ? ` · entrega ${data(g.previsao_entrega)}` : ''}</div>
+      <div class="d">${h([...new Set(g.lista.map(i => i.descricao + (i.cor ? ' ' + i.cor : '')))].join(' | '))}</div>
+      <div style="margin-top:6px">${chip('✂ Cortado · sem OP', 'info')}${atras ? ' ' + chip('Atrasado', 'erro') : ''}</div>
+      ${pode ? `<div class="acoes"><button class="btn peq pri" data-gerar="${h(g.pedido_numero)}">Gerar OP</button></div>` : ''}</article>`;
+  };
+
+  const col = (id, nome, lista, extra = '', html = null) => `<section class="kcol" data-col="${id}">
+    <div class="kcol-cab">${extra}<span>${h(nome)}</span> <small>${num(lista.reduce((a, c) => a + (c.quantidade ?? c.pecas), 0))} pç</small></div>
+    ${html ?? (lista.map(c => cartao(c, pode)).join('') || '<div class="kvazio">Nada aqui</div>')}</section>`;
+
+  let quadro;
+  if (aberta) {
+    const daEtapa = filtrados.filter(c => c.local === 'ETAPA' && c.etapa === aberta);
+    quadro = `<div class="etapa-aberta"><button class="btn" id="fechar-etapa">⤡ Fechar ${h(NOME_ETAPA[aberta])} (voltar ao quadro geral)</button>
+      <span class="muted peq">Tudo o que está em ${h(NOME_ETAPA[aberta])}, separado pela situação.</span></div>
+      <div class="kanban">${SUB.map(s => col(s.id, s.nome, daEtapa.filter(c => c.estado === s.id))).join('')}</div>`;
+  } else {
+    quadro = `<div class="kanban">${COLUNAS.map(c => {
+      if (c.id === 'CORTADO') return col('CORTADO', c.nome, cardsCortado, '',
+        (cardsCortado.map(cartaoCortado).join('') || '<div class="kvazio">Nada cortado aguardando OP</div>') +
+        (emCorte ? `<div class="kvazio peq">${num(emCorte)} peça(s) ainda não cortadas · <a href="#/corte">ver corte</a></div>` : ''));
+      const lista = filtrados.filter(x => colunaDe(x) === c.id);
+      return col(c.id, c.nome, lista, c.etapa ? `<button class="kabrir" data-abrir="${c.id}" title="Abrir ${h(c.nome)} em detalhe">⤢</button>` : '');
+    }).join('')}</div>`;
+  }
 
   el.innerHTML = `
-    <div class="cab"><div><h1>Produção</h1><p>Cada cartão é uma OP (ou parte dela) no lugar onde as peças estão agora.</p></div>
+    <div class="cab"><div><h1>Produção${aberta ? ' · ' + h(NOME_ETAPA[aberta]) : ''}</h1><p>Cada cartão é uma OP (ou parte dela) no lugar onde as peças estão agora. Clique em ⤢ numa etapa para abrir o detalhe dela.</p></div>
       <div class="acoes">${pode ? `<button class="btn acento" id="nova-op">+ Nova OP</button>` : ''}
-        <a class="btn" href="#/pedidos">${num(pecasSemOp)} peça(s) sem OP</a></div></div>
+        <a class="btn" href="#/itens">${num(pecasSemOp)} peça(s) sem OP</a></div></div>
     <div class="filtros">
       <label class="campo">Buscar<input id="busca" value="${h(busca)}" placeholder="OP, cliente, pedido, parceiro, item…"></label>
       <label class="peq" style="padding-bottom:10px"><input type="checkbox" id="atras" ${soAtrasados ? 'checked' : ''}> Só atrasados</label>
     </div>
-    <div class="kanban">${COLUNAS.map(col => {
-      const lista = filtrados.filter(c => colunaDe(c) === col.id);
-      return `<section class="kcol" data-col="${col.id}"><div class="kcol-cab">${h(col.nome)} <small>${num(lista.reduce((a, c) => a + c.quantidade, 0))} pç</small></div>
-        ${lista.map(c => cartao(c, pode)).join('') || '<div class="kvazio">Nada aqui</div>'}</section>`;
-    }).join('')}</div>`;
+    ${quadro}`;
 
+  el.querySelectorAll('[data-abrir]').forEach(b => b.onclick = () => { aberta = b.dataset.abrir; render(el); });
+  el.querySelector('#fechar-etapa')?.addEventListener('click', () => { aberta = null; render(el); });
+  el.querySelectorAll('[data-gerar]').forEach(b => b.onclick = () => { sessionStorage.setItem('itens_busca', b.dataset.gerar); location.hash = '#/itens'; });
   el.querySelector('#busca').onchange = (e) => { busca = e.target.value; render(el); };
   el.querySelector('#atras').onchange = (e) => { soAtrasados = e.target.checked; render(el); };
   el.querySelector('#nova-op')?.addEventListener('click', () => { location.hash = '#/itens'; });
@@ -58,7 +107,7 @@ export async function render(el) {
     k.ondragend = () => { k.classList.remove('arrastando'); el.querySelectorAll('.kcol').forEach(c => c.classList.remove('alvo')); };
   });
   el.querySelectorAll('.kcol[data-col]').forEach(col => {
-    const ok = () => arrastando && col.dataset.col !== 'PRONTO';
+    const ok = () => arrastando && !aberta && !['PRONTO', 'CORTADO'].includes(col.dataset.col);
     col.ondragover = (e) => { if (ok()) { e.preventDefault(); col.classList.add('alvo'); } };
     col.ondragleave = () => col.classList.remove('alvo');
     col.ondrop = (e) => {

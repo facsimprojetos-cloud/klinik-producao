@@ -250,3 +250,10 @@ textarea.inp{width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:
 .kcard[draggable=true]{cursor:grab;border-left:4px solid #2f8a57}
 .kcard.arrastando{opacity:.45}
 .kcol.alvo{outline:3px dashed var(--acento);outline-offset:-3px;background:#fbf5e8}
+
+.kcol-cab{gap:6px}
+.kcol-cab span{flex:1}
+.kabrir{border:1px solid #cfcac2;background:#fff;border-radius:7px;width:28px;height:28px;cursor:pointer;font-size:15px;line-height:1;padding:0}
+.kabrir:hover{background:var(--acento);color:#fff;border-color:var(--acento)}
+.kcard.cortado{border-left-color:#5b7fa6}
+.etapa-aberta{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
