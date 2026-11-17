@@ -262,3 +262,9 @@ textarea.inp{width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:
 .kcard.compacto .rodape{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:7px}
 .kcard.compacto .rodape .btn{margin-left:auto}
 .kcard.compacto:hover{box-shadow:0 6px 16px rgba(40,38,34,.16)}
+
+table.fech tr.parc{cursor:pointer}
+table.fech tr.parc:hover td,table.fech tr.parc.aberto td{background:#f6f3ec}
+table.fech tr.det>td{background:#faf8f4;padding:10px}
+table.sub{font-size:.85rem}
+table.sub th{background:#f0ede7}
