@@ -1,6 +1,6 @@
 import { db, tem } from '../app.js';
 import { h, num, data, chip, ler, modal, etapasTexto, arr, NOME_ETAPA } from '../util.js';
-import { desmembrar, encaminhar, enviar, confirmarSaida, excluirRemessa, receber, embalar, imprimirRomaneio, imprimirFolhaOp, chipsEtapas } from '../acoes.js';
+import { desmembrar, encaminhar, enviar, confirmarSaida, excluirRemessa, receber, embalar, imprimirRomaneio, imprimirFolhaOp, chipsEtapas, resumoEtapasOp, chipsResumo } from '../acoes.js';
 
 const COLUNAS = [
   { id: 'CORTADO', nome: 'Cortado · gerar OP' },
@@ -24,6 +24,10 @@ export async function render(el) {
     ler(db.from('v_kanban').select('*').order('op_numero')),
     ler(db.from('v_detalhe_venda').select('*').gt('saldo', 0)),
   ]);
+  const opIds = [...new Set(cards.map(c => c.op_id))];
+  const etapasOps = opIds.length ? await ler(db.from('v_op_item_etapas').select('op_id,etapa,quantidade,enviado,retornado').in('op_id', opIds)) : [];
+  resumoPorOp = new Map();
+  etapasOps.forEach(e => { if (!resumoPorOp.has(e.op_id)) resumoPorOp.set(e.op_id, []); resumoPorOp.get(e.op_id).push(e); });
   const pecasSemOp = itens.reduce((a, x) => a + x.saldo, 0);
   const pode = tem('producao');
   const t = busca.toLowerCase();
@@ -168,11 +172,13 @@ function cartao(c, pode) {
     <div class="d um">${h(c.op_descricao || c.itens || '')}</div>
     <div class="d um">${h(cli[0] || '')}${cli.length > 1 ? ` <span class="muted">+${cli.length - 1}</span>` : ''}</div>
     ${a.linha ? `<div class="d um">${a.linha}</div>` : ''}
+    ${chipsResumo(resumoEtapasOp(resumoPorOp.get(c.op_id)))}
     <div class="rodape">${a.estado}${c.atrasado ? chip('Atrasado', 'erro') : ''}${a.lista[0] || ''}</div>
   </article>`;
 }
 
 let cardsAtuais = [];
+let resumoPorOp = new Map();
 export function limparCards() { cardsAtuais = []; }
 
 // janela com tudo o que está no cartão

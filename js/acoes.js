@@ -6,6 +6,44 @@ import {
   cadastros, NOME_ETAPA, etapasTexto, arr, qrSvg, imprimirHtml, cabecalhoDoc, nomeArquivo
 } from './util.js';
 
+const ORDEM_ETAPAS = ['FACCAO', 'SILK', 'BORDADO'];
+// Histórico por item da OP: { op_item_id: { ETAPA: {quantidade, enviado, retornado} } }
+export function historicoEtapas(linhas) {
+  const m = new Map();
+  for (const e of linhas || []) {
+    if (!m.has(e.op_item_id)) m.set(e.op_item_id, {});
+    m.get(e.op_item_id)[e.etapa] = { quantidade: e.quantidade, enviado: e.enviado, retornado: e.retornado };
+  }
+  return m;
+}
+// Resumo da OP por etapa (somando os itens que passam por ela): [{etapa, total, retornado, enviado}]
+export function resumoEtapasOp(linhas) {
+  const r = {};
+  for (const e of linhas || []) {
+    const x = r[e.etapa] || (r[e.etapa] = { etapa: e.etapa, total: 0, retornado: 0, enviado: 0 });
+    x.total += e.quantidade; x.retornado += Math.min(e.retornado, e.quantidade); x.enviado += Math.min(e.enviado, e.quantidade);
+  }
+  return ORDEM_ETAPAS.filter(k => r[k]).map(k => r[k]);
+}
+export function chipsResumo(res) {
+  if (!res.length) return '';
+  return `<div class="etapas">${res.map(x => {
+    const cls = x.retornado >= x.total ? 'feito' : x.enviado > 0 || x.retornado > 0 ? 'atual' : '';
+    return `<span class="etp ${cls}" title="${h(NOME_ETAPA[x.etapa])}: ${x.retornado} de ${x.total} peça(s) já voltaram${x.enviado > x.retornado ? `, ${x.enviado - x.retornado} com o parceiro` : ''}">${cls === 'feito' ? '✓ ' : ''}${h(NOME_ETAPA[x.etapa])} ${num(x.retornado)}/${num(x.total)}</span>`;
+  }).join('')}</div>`;
+}
+// Aviso de etapas por onde o item já passou. destino = etapa que se pretende mandar agora
+function avisoPassou(hist, destino) {
+  if (!hist) return '';
+  const feitas = ORDEM_ETAPAS.filter(k => hist[k] && hist[k].retornado > 0)
+    .map(k => `${NOME_ETAPA[k]} ${num(Math.min(hist[k].retornado, hist[k].quantidade))}/${num(hist[k].quantidade)}`);
+  const d = destino && hist[destino];
+  let repete = '';
+  if (d && d.enviado >= d.quantidade) repete = `<div class="aviso-repete">⚠ Este item já ${d.retornado >= d.quantidade ? 'passou pelo' : 'foi todo enviado para o'} ${h(NOME_ETAPA[destino])} (${num(d.enviado)} de ${num(d.quantidade)} peça(s)). Confira antes de mandar de novo.</div>`;
+  else if (d && d.enviado > 0) repete = `<div class="peq" style="color:var(--alerta)">${num(d.enviado)} de ${num(d.quantidade)} peça(s) já foram para o ${h(NOME_ETAPA[destino])}; faltam ${num(d.quantidade - d.enviado)}.</div>`;
+  return (feitas.length ? `<div class="peq" style="color:var(--ok)">Já passou: ${h(feitas.join(' · '))}</div>` : '') + repete;
+}
+
 const rotuloItem = (x) => [x.referencia, x.descricao, x.cor, x.tamanho].filter(Boolean).join(' · ');
 
 // ---------- Nova OP: itens do saldo com as mesmas etapas ----------
@@ -22,10 +60,12 @@ export async function novaOp(depois, filtroPedido = null) {
 const DESTINOS = [['FACCAO', 'Facção'], ['SILK', 'Silk'], ['BORDADO', 'Bordado'], ['EMBALAGEM', 'Embalagem']];
 export async function encaminhar(opId, de, para, depois) {
   if (!tem('producao')) return toast('Encaminhar exige o perfil "producao".', 'erro');
-  const [etapas, itens] = await Promise.all([
-    ler(db.from('v_op_item_etapas').select('*').eq('op_id', opId).eq('etapa', de).gt('concluido', 0)),
+  const [todas, itens] = await Promise.all([
+    ler(db.from('v_op_item_etapas').select('*').eq('op_id', opId)),
     ler(db.from('v_op_itens').select('*').eq('op_id', opId)),
   ]);
+  const hist = historicoEtapas(todas);
+  const etapas = todas.filter(e => e.etapa === de && e.concluido > 0);
   if (!etapas.length) return toast('Não há peças concluídas nesta etapa.', 'erro');
   const info = new Map(itens.map(i => [i.op_item_id, i]));
   const op = itens[0];
@@ -36,9 +76,10 @@ export async function encaminhar(opId, de, para, depois) {
     const i = info.get(e.op_item_id) || {}, rot = arr(i.item_etapas);
     const passa = dest === 'EMBALAGEM' || rot.includes(dest);
     const faltam = dest === 'EMBALAGEM' ? rot.slice(rot.indexOf(de) + 1) : [];
-    return `<tr data-oi="${e.op_item_id}"><td>${h(i.pedido_numero)}<div class="peq muted">${h(i.cliente_nome)}</div></td><td>${h(rotuloItem(i))}</td>
+    const hi = hist.get(e.op_item_id), jaFoi = dest !== 'EMBALAGEM' && hi?.[dest] && hi[dest].enviado >= hi[dest].quantidade;
+    return `<tr data-oi="${e.op_item_id}" class="${jaFoi ? 'repete' : ''}"><td>${h(i.pedido_numero)}<div class="peq muted">${h(i.cliente_nome)}</div></td><td>${h(rotuloItem(i))}${avisoPassou(hi, dest === 'EMBALAGEM' ? null : dest)}</td>
       <td class="peq">${h(etapasTexto(rot))}</td><td class="n">${num(e.concluido)}</td>
-      <td class="n">${passa ? `<input class="inp num" type="number" min="0" max="${e.concluido}" value="${e.concluido}" data-eq>` : `<span class="peq muted">não passa por ${h(NOME_ETAPA[dest] || dest)}</span>`}
+      <td class="n">${passa ? `<input class="inp num" type="number" min="0" max="${e.concluido}" value="${jaFoi ? 0 : e.concluido}" data-eq>` : `<span class="peq muted">não passa por ${h(NOME_ETAPA[dest] || dest)}</span>`}
       ${passa && faltam.length ? `<div class="peq" style="color:var(--alerta)">ainda previsto: ${h(etapasTexto(faltam))}</div>` : ''}</td></tr>`;
   }).join('');
   modal({
@@ -50,8 +91,11 @@ export async function encaminhar(opId, de, para, depois) {
     aoAbrir: (m) => { m.querySelector('#enc-para').onchange = (ev) => { m.querySelector('#enc-linhas').innerHTML = linhasHtml(ev.target.value); }; },
     botoes: [{ texto: 'Cancelar' }, { texto: 'Encaminhar', classe: 'pri', acao: async (m) => {
       const dest = m.querySelector('#enc-para').value;
-      const linhas = [...m.querySelectorAll('#enc-linhas tr[data-oi]')].map(tr => ({ op_item_id: tr.dataset.oi, quantidade: +(tr.querySelector('[data-eq]')?.value) || 0 })).filter(l => l.quantidade > 0);
+      const linhas = [...m.querySelectorAll('#enc-linhas tr[data-oi]')].map(tr => ({ op_item_id: tr.dataset.oi, quantidade: +(tr.querySelector('[data-eq]')?.value) || 0, repete: tr.classList.contains('repete') })).filter(l => l.quantidade > 0);
       if (!linhas.length) { toast('Nenhuma peça para encaminhar.', 'erro'); return false; }
+      const rep = linhas.filter(l => l.repete).length;
+      if (rep && !(await confirmar('Mandar de novo?', `${rep} item(ns) marcado(s) <b>já passaram por ${h(NOME_ETAPA[dest] || dest)}</b>. Tem certeza de que quer mandar de novo?`, 'Sim, mandar de novo'))) return false;
+      linhas.forEach(l => delete l.repete);
       const r = await chamar(db, 'encaminhar', { p_de: de, p_para: dest, p_linhas: linhas });
       if (r == null) return false;
       toast(`${r} peça(s) encaminhadas para ${DESTINOS.find(d => d[0] === dest)[1]}.`, 'ok');
@@ -89,11 +133,13 @@ export async function desmembrar(opId, depois) {
 // ---------- Enviar peças de uma OP para um parceiro numa etapa ----------
 export async function enviar(opId, etapa, depois) {
   if (!tem('producao')) return toast('Enviar exige o perfil "producao".', 'erro');
-  const [etapas, itens, cad] = await Promise.all([
-    ler(db.from('v_op_item_etapas').select('*').eq('op_id', opId).eq('etapa', etapa).gt('aguardando_envio', 0)),
+  const [todasEt, itens, cad] = await Promise.all([
+    ler(db.from('v_op_item_etapas').select('*').eq('op_id', opId)),
     ler(db.from('v_op_itens').select('*').eq('op_id', opId)),
     cadastros(db),
   ]);
+  const hist = historicoEtapas(todasEt);
+  const etapas = todasEt.filter(e => e.etapa === etapa && e.aguardando_envio > 0);
   if (!etapas.length) return toast('Nada aguardando envio nesta etapa.', 'erro');
   const info = new Map(itens.map(i => [i.op_item_id, i]));
   const parceiros = cad.parceiros.filter(p => p.ativo && arr(p.etapas).includes(etapa));
@@ -108,8 +154,8 @@ export async function enviar(opId, etapa, depois) {
       </div>
       <div class="tabela-wrap" style="margin-top:12px"><table>
         <thead><tr><th>Pedido</th><th>Item</th><th class="n">Disponível</th><th class="n">Enviar</th><th class="n">R$/peça</th><th class="n">Total</th></tr></thead>
-        <tbody>${etapas.map(e => { const i = info.get(e.op_item_id) || {}; return `<tr data-oi="${e.op_item_id}" data-prod="${i.produto_id || ''}">
-          <td>${h(i.pedido_numero)}<div class="peq muted">${h(i.cliente_nome)}</div></td><td>${h(rotuloItem(i))}</td>
+        <tbody>${etapas.map(e => { const i = info.get(e.op_item_id) || {}, hi = hist.get(e.op_item_id), jaFoi = !!hi?.[etapa] && hi[etapa].enviado >= hi[etapa].quantidade; return `<tr data-oi="${e.op_item_id}" data-prod="${i.produto_id || ''}" class="${jaFoi ? 'repete' : ''}">
+          <td>${h(i.pedido_numero)}<div class="peq muted">${h(i.cliente_nome)}</div></td><td>${h(rotuloItem(i))}${avisoPassou(hi, etapa)}</td>
           <td class="n">${num(e.aguardando_envio)}</td>
           <td class="n"><input class="inp num" type="number" min="0" max="${e.aguardando_envio}" value="${e.aguardando_envio}" data-campo="q"></td>
           <td class="n"><input class="inp num" type="number" min="0" step="0.01" data-campo="v" placeholder="0,00"></td>
@@ -141,6 +187,8 @@ export async function enviar(opId, etapa, depois) {
       texto: 'Registrar remessa', classe: 'pri', acao: async (m) => {
         const parc = m.querySelector('#env-parc').value;
         if (!parc) { toast('Escolha o parceiro.', 'erro'); return false; }
+        const rep = [...m.querySelectorAll('tr[data-oi].repete')].filter(tr => (+tr.querySelector('[data-campo=q]').value || 0) > 0).length;
+        if (rep && !(await confirmar('Mandar de novo?', `${rep} item(ns) marcado(s) <b>já foram enviados inteiros para ${h(NOME_ETAPA[etapa])}</b> antes. Tem certeza de que quer mandar de novo?`, 'Sim, mandar de novo'))) return false;
         const linhas = [...m.querySelectorAll('tr[data-oi]')].map(tr => ({
           op_item_id: tr.dataset.oi, quantidade: +tr.querySelector('[data-campo=q]').value || 0,
           valor_peca: tr.querySelector('[data-campo=v]').value }));

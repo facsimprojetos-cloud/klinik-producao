@@ -168,6 +168,8 @@ textarea.inp{width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:
 .etapas{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
 .etp{font-size:.7rem;font-weight:800;border-radius:6px;padding:2px 7px;border:1px solid var(--linha);color:var(--sub);background:#fff;white-space:nowrap}
 .etp.feito{background:var(--ok-bg);color:var(--ok);border-color:#a7f3d0}
+.aviso-repete{margin-top:4px;font-size:.8rem;font-weight:700;color:#9a3412;background:#fff1e6;border:1px solid #fdba74;border-radius:6px;padding:3px 7px}
+tr.repete td{background:#fffaf3}
 .etp.atual{background:var(--alerta-bg);color:var(--alerta);border-color:#fcd34d}
 .kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;align-items:flex-start}
 .kcol{flex:0 0 290px;background:#ebe8e2;border-radius:var(--raio);padding:10px;display:flex;flex-direction:column;gap:9px;min-height:200px}
