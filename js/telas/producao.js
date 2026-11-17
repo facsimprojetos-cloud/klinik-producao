@@ -154,14 +154,17 @@ function acoesDe(c, pode) {
   return { estado, lista, cls, linha };
 }
 
+const numerosPedidos = (c) => [...new Set(String(c.pedidos || '').split(' | ').map(x => x.split(' · ')[0].trim()).filter(Boolean))];
 const clientes = (c) => [...new Set(String(c.pedidos || '').split(' | ').map(x => x.split(' · ').slice(1).join(' · ')).filter(Boolean))];
 
 function cartao(c, pode) {
   const a = acoesDe(c, pode);
   const arrasta = pode && c.estado === 'CONCLUIDO' ? `draggable="true" data-op="${c.op_id}" data-etapa="${c.etapa}"` : '';
   const cli = clientes(c);
+  const peds = numerosPedidos(c);
   return `<article class="kcard compacto ${a.cls}" ${arrasta} data-k="${cardsAtuais.push(c) - 1}" title="Clique para ver tudo">
     <div class="t"><span>OP ${c.op_numero}</span><span class="q">${num(c.quantidade)} pç</span></div>
+    ${peds.length ? `<div class="peds" title="Pedidos: ${h(peds.join(', '))}">${peds.slice(0, 4).map(n => `<span>Ped. ${h(n)}</span>`).join('')}${peds.length > 4 ? `<span class="mais">+${peds.length - 4}</span>` : ''}</div>` : ''}
     <div class="d um">${h(c.op_descricao || c.itens || '')}</div>
     <div class="d um">${h(cli[0] || '')}${cli.length > 1 ? ` <span class="muted">+${cli.length - 1}</span>` : ''}</div>
     ${a.linha ? `<div class="d um">${a.linha}</div>` : ''}

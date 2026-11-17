@@ -261,6 +261,9 @@ textarea.inp{width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:
 .kcard.compacto .d.um{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kcard.compacto .rodape{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:7px}
 .kcard.compacto .rodape .btn{margin-left:auto}
+.kcard .peds{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 2px}
+.kcard .peds span{font-size:.78rem;font-weight:800;background:#efece6;color:#464646;border-radius:6px;padding:1px 7px;white-space:nowrap}
+.kcard .peds .mais{background:transparent;color:var(--sub)}
 .kcard.compacto:hover{box-shadow:0 6px 16px rgba(40,38,34,.16)}
 
 table.fech tr.parc{cursor:pointer}
