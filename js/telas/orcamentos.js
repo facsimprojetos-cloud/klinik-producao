@@ -7,8 +7,8 @@ import {
 import { tabelaFuncionarios } from '../acoes.js';
 
 const COLS = [
-  { st: 'ELABORACAO', nome: 'Em elaboração' }, { st: 'ENVIADO', nome: 'Enviado' },
-  { st: 'AGUARDANDO', nome: 'Aguardando aprovação' }, { st: 'APROVADO', nome: 'Aprovado' }, { st: 'PEDIDO', nome: 'Virou pedido' },
+  { st: 'ELABORACAO', nome: 'Em elaboração' },
+  { st: 'AGUARDANDO', nome: 'Enviado · aguardando aprovação' }, { st: 'APROVADO', nome: 'Aprovado' }, { st: 'PEDIDO', nome: 'Virou pedido' },
 ];
 const MED = [['torax', 'Tórax'], ['busto', 'Busto'], ['cintura', 'Cintura'], ['quadril', 'Quadril'], ['manga', 'Manga'], ['comprimento', 'Comp.']];
 let busca = '';
@@ -28,7 +28,7 @@ export async function render(el) {
       ${pode ? '<button class="btn acento" id="novo">+ Novo orçamento</button>' : ''}</div>
     <div class="filtros"><label class="campo">Buscar<input id="busca" value="${h(busca)}" placeholder="Cliente, número, vendedor…"></label></div>
     <div class="kanban">${COLS.map(c => {
-      let cards = f.filter(o => o.status === c.st);
+      let cards = f.filter(o => o.status === c.st || (c.st === 'AGUARDANDO' && o.status === 'ENVIADO'));
       const soma = cards.reduce((a, o) => a + Number(o.total), 0), n = cards.length;
       if (c.st === 'PEDIDO') cards = cards.slice(0, 20);
       return `<section class="kcol" data-col="${c.st}"><div class="kcol-cab">${c.nome}<small>${n} · ${moeda(soma)}</small></div>
@@ -157,7 +157,7 @@ function editor() {
   const { t } = totais();
   el.innerHTML = `
     <div class="cab"><div><h1>${o.id ? 'Orçamento ' + h(o.numero) : 'Novo orçamento'}</h1>
-      <p>${o.id ? `${chip(COLS.find(c => c.st === o.status)?.nome || o.status, o.status === 'APROVADO' ? 'ok' : 'info')} · revisão ${o.revisao}${o.pdf_atualizado ? ' · PDF em dia' : o.id ? ' · ' + chip('PDF desatualizado', 'alerta') : ''}${o.pedido_numero ? ' · Pedido ' + h(o.pedido_numero) : ''}` : 'Preencha e salve.'}</p></div>
+      <p>${o.id ? `${chip(COLS.find(c => c.st === (o.status === 'ENVIADO' ? 'AGUARDANDO' : o.status))?.nome || o.status, o.status === 'APROVADO' ? 'ok' : 'info')} · revisão ${o.revisao}${o.pdf_atualizado ? ' · PDF em dia' : o.id ? ' · ' + chip('PDF desatualizado', 'alerta') : ''}${o.pedido_numero ? ' · Pedido ' + h(o.pedido_numero) : ''}` : 'Preencha e salve.'}</p></div>
       <button class="btn" id="voltar">← Voltar ao quadro</button></div>
     <fieldset ${tr ? 'disabled' : ''} style="border:0;padding:0;margin:0">
     <div class="card"><div class="grade g4">
