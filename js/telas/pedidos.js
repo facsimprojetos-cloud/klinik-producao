@@ -1,10 +1,10 @@
 import { db, tem } from '../app.js';
-import { h, num, moeda, data, dataHora, chip, modal, ler, chamar, toast, confirmar, pedirTexto, NOME_ETAPA, etapasTexto, arr } from '../util.js';
+import { h, num, moeda, data, dataHora, chip, modal, ler, chamar, toast, confirmar, pedirTexto, NOME_ETAPA, etapasTexto, arr, hojeISO, imprimirHtml, cabecalhoDoc, nomeArquivo } from '../util.js';
 import { novaOp, imprimirFolhaCorte, tabelaFuncionarios } from '../acoes.js';
 
 let aba = 'andamento';
 let busca = '';
-const COR_SIT = { 'AGUARDANDO OP': 'info', 'EM PRODUÇÃO': 'alerta', 'PRONTO PARA ENTREGA': 'ok', 'ENTREGUE': '', 'CANCELADO': 'erro' };
+const COR_SIT = { 'AGUARDANDO OP': 'info', 'EM PRODUÇÃO': 'alerta', 'PRONTO PARA ENTREGA': 'ok', 'ENTREGA PARCIAL': 'info', 'ENTREGUE': '', 'CANCELADO': 'erro' };
 
 export async function render(el) {
   let q = db.from('v_pedido_resumo').select('*').order('previsao_entrega', { ascending: true, nullsFirst: false }).limit(500);
@@ -27,7 +27,7 @@ export async function render(el) {
         return `<tr data-p="${p.pedido_id}" style="cursor:pointer"><td class="forte">${h(p.numero)}</td><td>${h(p.cliente_nome)}</td><td>${data(p.data)}</td>
           <td>${data(p.previsao_entrega) || '—'} ${p.atrasado ? chip('Atrasado', 'erro') : ''}</td><td class="n">${num(p.pecas)}</td>
           <td style="min-width:150px"><div class="barra"><i class="b-ok" style="width:${pOk}%"></i><i class="b-prod" style="width:${pProd}%"></i></div>
-            <span class="peq muted">${num(p.embalado)} prontas · ${num(p.em_producao)} em produção · ${num(p.sem_op)} sem OP</span></td>
+            <span class="peq muted">${p.entregue ? num(p.entregue) + ' entregues · ' : ''}${num(p.embalado)} prontas · ${num(p.em_producao)} em produção · ${num(p.sem_op)} sem OP</span></td>
           <td>${chip(p.situacao, COR_SIT[p.situacao])}</td></tr>`;
       }).join('') || '<tr><td colspan="7" class="vazio">Nenhum pedido.</td></tr>'}</tbody></table></div>`;
   el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { aba = b.dataset.a; render(el); });
@@ -36,22 +36,24 @@ export async function render(el) {
 }
 
 async function detalhe(id, depois) {
-  const [[p], [r], itens, dist] = await Promise.all([
+  const [[p], [r], itens, dist, entregas] = await Promise.all([
     ler(db.from('pedidos').select('*').eq('id', id)),
     ler(db.from('v_pedido_resumo').select('*').eq('pedido_id', id)),
     ler(db.from('pedido_itens').select('*').eq('pedido_id', id).order('ordem')),
     ler(db.from('v_pedido_distribuicao').select('*').eq('pedido_id', id).order('op_numero')),
+    ler(db.from('entregas').select('*, entrega_itens(quantidade)').eq('pedido_id', id).order('criado_em')),
   ]);
   const funcs = itens.length ? await ler(db.from('pedido_funcionarios').select('*').in('pedido_item_id', itens.map(i => i.id)).order('ordem')) : [];
   const ativo = !p.baixado_em && !p.cancelado_em;
   const onde = d => d.local === 'ETAPA' ? `${NOME_ETAPA[d.etapa]} · ${d.estado === 'AGUARDANDO_ENVIO' ? 'aguardando envio' : d.estado === 'PREPARADO' ? 'remessa preparada' : d.estado === 'CONCLUIDO' ? 'pronto, aguardando encaminhar' : 'com o parceiro'}`
-    : d.local === 'EMBALAGEM' ? 'Aguardando embalagem' : 'Embalado';
-  modal({
+    : d.local === 'EMBALAGEM' ? 'Aguardando embalagem' : d.local === 'ENTREGUE' ? 'Entregue ao cliente' : 'Pronto (embalado), a entregar';
+  const mm = modal({
     titulo: `Pedido ${p.numero} · ${p.cliente_nome}`, largo: true,
     corpo: `
-      <div class="grade g4">
+      <div class="grade" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
         <div class="kpi"><div class="rot">Peças</div><div class="val">${num(r.pecas)}</div></div>
-        <div class="kpi ok"><div class="rot">Prontas</div><div class="val">${num(r.embalado)}</div></div>
+        <div class="kpi"><div class="rot">Entregues</div><div class="val">${num(r.entregue)}</div></div>
+        <div class="kpi ok"><div class="rot">Prontas a entregar</div><div class="val">${num(r.embalado)}</div></div>
         <div class="kpi alerta"><div class="rot">Em produção</div><div class="val">${num(r.em_producao)}</div></div>
         <div class="kpi"><div class="rot">Sem OP</div><div class="val">${num(r.sem_op)}</div></div>
       </div>
@@ -64,6 +66,10 @@ async function detalhe(id, depois) {
           ${i.observacao ? `<div class="peq muted">${h(i.observacao)}</div>` : ''}${fs.length ? `<div class="peq muted">${fs.length} funcionário(s): ${h(fs.map(f => f.nome).join(', '))}</div>` : ''}</td>
           <td>${h(i.tecido || '')}</td><td class="peq">${i.tipo === 'PRODUTO' ? h(etapasTexto(arr(i.etapas))) + (i.silk_desc ? `<br>Silk: ${h(i.silk_desc)}` : '') + (i.bordado_desc ? `<br>Bordado: ${h(i.bordado_desc)}` : '') : chip(i.tipo === 'SERVICO' ? 'Serviço' : i.tipo)}</td>
           <td class="n">${num(i.quantidade)}</td><td class="n">${moeda(i.quantidade * i.valor_unitario)}</td></tr>`; }).join('')}</tbody></table></div>
+      ${entregas.length ? `<h3 style="margin-top:14px">Entregas ${r.situacao === 'ENTREGA PARCIAL' ? chip('Entrega parcial · faltam ' + num(r.pecas - r.entregue) + ' pç', 'info') : ''}</h3>
+      <div class="tabela-wrap"><table><thead><tr><th>Romaneio</th><th>Data</th><th class="n">Peças</th><th>Por</th><th></th></tr></thead>
+        <tbody>${entregas.map(e => `<tr><td class="forte">${h(e.numero)}</td><td>${data(e.data)}</td><td class="n">${num(e.entrega_itens.reduce((a, x) => a + x.quantidade, 0))}</td><td>${h(e.criado_por || '')}</td>
+          <td><button class="btn peq" data-imp-ent="${e.id}">Romaneio PDF</button>${tem('supervisor') ? ` <button class="btn peq perigo" data-del-ent="${e.id}" data-num="${h(e.numero)}">Excluir</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
       <h3 style="margin-top:14px">Onde estão as peças</h3>
       <div class="tabela-wrap"><table><thead><tr><th>OP</th><th>Item</th><th>Onde</th><th>Parceiro</th><th class="n">Peças</th></tr></thead>
         <tbody>${dist.map(d => `<tr><td class="forte">OP ${d.op_numero}</td><td>${h([d.descricao, d.cor, d.tamanho].filter(Boolean).join(' · '))}</td>
@@ -83,6 +89,7 @@ async function detalhe(id, depois) {
         if (!motivo) return false;
         if (await chamar(db, 'pedido_cancelar', { p_id: id, p_motivo: motivo })) { toast('Pedido cancelado.', 'ok'); depois(); }
       } }] : []),
+      ...(ativo && tem('producao') && r.embalado > 0 ? [{ texto: 'Romaneio de entrega', classe: 'pri', acao: () => { novaEntrega(p, depois); } }] : []),
       ...(ativo && tem('producao') && r.situacao === 'PRONTO PARA ENTREGA' ? [{ texto: 'Dar baixa (entregue)', classe: 'acento', acao: async () => {
         if (!await confirmar('Dar baixa', `Confirmar a entrega do pedido <b>${h(p.numero)}</b>? Ele sai da lista e vai para o histórico.`, 'Dar baixa')) return false;
         if (await chamar(db, 'baixar_pedido', { p_pedido: id })) { toast('Pedido entregue e movido para o histórico.', 'ok'); depois(); }
@@ -92,5 +99,77 @@ async function detalhe(id, depois) {
       } }] : []),
     ]
   });
+  mm.el.querySelectorAll('[data-imp-ent]').forEach(b => b.onclick = () => imprimirEntrega(b.dataset.impEnt));
+  mm.el.querySelectorAll('[data-del-ent]').forEach(b => b.onclick = async () => {
+    if (!await confirmar('Excluir entrega', `Excluir o romaneio <b>${h(b.dataset.num)}</b>? As peças voltam a ficar "prontas a entregar".`, 'Excluir', 'perigo')) return;
+    if (await chamar(db, 'excluir_entrega', { p_entrega: b.dataset.delEnt })) { toast('Entrega excluída.', 'ok'); mm.fechar(); depois(); }
+  });
 }
 export { tabelaFuncionarios };
+
+
+// ---------- Romaneio de entrega (parcial ou total) ----------
+async function novaEntrega(p, depois) {
+  const itens = await ler(db.from('v_op_itens').select('*').eq('pedido_id', p.id).gt('embalado', 0).order('descricao'));
+  const ent = itens.length ? await ler(db.from('entrega_itens').select('op_item_id, quantidade').in('op_item_id', itens.map(i => i.op_item_id))) : [];
+  const ja = new Map(); ent.forEach(e => ja.set(e.op_item_id, (ja.get(e.op_item_id) || 0) + e.quantidade));
+  const linhas = itens.map(i => ({ ...i, disp: i.embalado - (ja.get(i.op_item_id) || 0) })).filter(i => i.disp > 0);
+  if (!linhas.length) return toast('Não há peças prontas (embaladas) para entregar.', 'erro');
+  modal({
+    titulo: `Romaneio de entrega · Pedido ${p.numero} · ${p.cliente_nome}`, largo: true,
+    corpo: `<p class="muted peq">Marque o que vai nesta entrega. O pedido continua aberto com o que falta e fica sinalizado como <b>entrega parcial</b>. Quando tudo for entregue, ele dá baixa sozinho.</p>
+      <div class="grade g2"><label class="campo">Data da entrega<input type="date" id="ent-data" value="${hojeISO()}"></label>
+        <label class="campo">Observação<input id="ent-obs" placeholder="Ex.: retirado pela Ana"></label></div>
+      <div class="tabela-wrap" style="margin-top:10px"><table><thead><tr><th>Item</th><th>OP</th><th class="n">Prontas</th><th class="n">Entregar</th></tr></thead>
+        <tbody>${linhas.map(i => `<tr><td>${h([i.referencia, i.descricao, i.cor, i.tamanho].filter(Boolean).join(' · '))}</td><td>${i.op_numero}</td>
+          <td class="n">${num(i.disp)}</td><td class="n"><input class="inp num" type="number" min="0" max="${i.disp}" value="${i.disp}" data-ent="${i.op_item_id}"></td></tr>`).join('')}</tbody></table></div>`,
+    botoes: [{ texto: 'Cancelar' }, { texto: 'Registrar e imprimir', classe: 'pri', acao: async (m) => {
+      const l = [...m.querySelectorAll('[data-ent]')].map(x => ({ op_item_id: x.dataset.ent, quantidade: +x.value || 0 })).filter(x => x.quantidade > 0);
+      if (!l.length) { toast('Informe quantas peças vão nesta entrega.', 'erro'); return false; }
+      const e = await chamar(db, 'registrar_entrega', { p_pedido: p.id, p_linhas: l, p_data: m.querySelector('#ent-data').value || null, p_observacao: m.querySelector('#ent-obs').value });
+      if (!e) return false;
+      toast(`Entrega ${e.numero} registrada.`, 'ok');
+      depois && depois();
+      imprimirEntrega(e.id);
+    } }]
+  });
+}
+
+async function imprimirEntrega(entregaId) {
+  const [[e]] = await Promise.all([ler(db.from('entregas').select('*, entrega_itens(op_item_id, quantidade)').eq('id', entregaId))]);
+  if (!e) return;
+  const [[p], [r], todas] = await Promise.all([
+    ler(db.from('pedidos').select('*').eq('id', e.pedido_id)),
+    ler(db.from('v_pedido_resumo').select('*').eq('pedido_id', e.pedido_id)),
+    ler(db.from('entregas').select('id, numero, data, criado_em, entrega_itens(quantidade)').eq('pedido_id', e.pedido_id).order('criado_em')),
+  ]);
+  const ids = e.entrega_itens.map(x => x.op_item_id);
+  const itens = ids.length ? await ler(db.from('v_op_itens').select('*').in('op_item_id', ids)) : [];
+  const cli = p.cliente_id ? (await ler(db.from('clientes').select('*').eq('id', p.cliente_id)))[0] : null;
+  const funcs = itens.length ? await ler(db.from('pedido_funcionarios').select('*').in('pedido_item_id', [...new Set(itens.map(i => i.pedido_item_id))]).order('ordem')) : [];
+  const info = new Map(itens.map(i => [i.op_item_id, i]));
+  // soma por item do pedido (o mesmo item pode estar em mais de uma OP)
+  const porItem = new Map();
+  e.entrega_itens.forEach(x => { const i = info.get(x.op_item_id); if (!i) return; const k = i.pedido_item_id;
+    if (!porItem.has(k)) porItem.set(k, { ...i, q: 0 }); porItem.get(k).q += x.quantidade; });
+  const linhas = [...porItem.values()].sort((a, b) => (a.descricao + a.cor + a.tamanho).localeCompare(b.descricao + b.cor + b.tamanho));
+  const pecas = linhas.reduce((a, i) => a + i.q, 0);
+  const ordem = todas.findIndex(x => x.id === e.id) + 1;
+  const ateAqui = todas.slice(0, ordem).reduce((a, x) => a + x.entrega_itens.reduce((b, y) => b + y.quantidade, 0), 0);
+  const faltam = Math.max(r.pecas - ateAqui, 0);
+  imprimirHtml(`<div class="doc">${cabecalhoDoc('ROMANEIO DE ENTREGA' + (faltam ? ' · PARCIAL' : ''), `${e.numero} · ${data(e.data)}`)}
+    <table class="info"><tr><td>Cliente</td><td><b>${h(p.cliente_nome)}</b>${cli?.razao_social ? `<br>${h(cli.razao_social)}` : ''}</td><td>CNPJ / CPF</td><td>${h(cli?.documento || '—')}</td></tr>
+      <tr><td>Pedido</td><td><b>${h(p.numero)}</b></td><td>Entrega</td><td>${ordem}ª entrega · ${data(e.data)}</td></tr>
+      ${cli?.endereco ? `<tr><td>Endereço</td><td colspan="3">${h(cli.endereco)}</td></tr>` : ''}</table>
+    <h3>Peças entregues</h3>
+    <table><thead><tr><th>Ref.</th><th>Produto</th><th>Tecido</th><th>Cor</th><th>Tam.</th><th>Funcionários</th><th class="n">Qtd</th></tr></thead>
+      <tbody>${linhas.map(i => { const fs = funcs.filter(f => f.pedido_item_id === i.pedido_item_id);
+        return `<tr><td>${h(i.referencia || '')}</td><td>${h(i.descricao)}</td><td>${h(i.tecido || '')}</td><td>${h(i.cor || '')}</td><td>${h(i.tamanho || '')}</td>
+        <td class="peq">${h(fs.map(f => f.nome).join(', '))}</td><td class="n"><b>${num(i.q)}</b></td></tr>`; }).join('')}</tbody>
+      <tfoot><tr><th colspan="6">Total desta entrega</th><th class="n">${num(pecas)}</th></tr></tfoot></table>
+    <table class="info" style="margin-top:4mm"><tr><td>Peças do pedido</td><td><b>${num(r.pecas)}</b></td><td>Entregues até esta entrega</td><td><b>${num(ateAqui)}</b></td></tr>
+      <tr><td>Faltam entregar</td><td colspan="3"><b>${faltam ? num(faltam) + ' peça(s) — entrega parcial' : 'Nenhuma — pedido completo'}</b></td></tr></table>
+    ${e.observacao ? `<div class="obs">${h(e.observacao)}</div>` : ''}
+    <div class="assin"><div>Entregue por (KLINIK) · data</div><div>Recebido por (${h(p.cliente_nome)}) · data</div></div></div>`,
+    nomeArquivo(['Romaneio de entrega', e.numero, faltam ? 'Parcial' : 'Completo', 'Pedido ' + p.numero, p.cliente_nome, num(pecas) + ' pc', data(e.data).replaceAll('/', '-')]));
+}
