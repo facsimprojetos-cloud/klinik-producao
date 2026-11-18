@@ -1,7 +1,7 @@
 // Itens dos pedidos (detalhe de venda): todos os itens, um embaixo do outro,
 // para selecionar itens de pedidos diferentes e formar uma OP.
 import { db, tem } from '../app.js';
-import { h, num, data, chip, modal, ler, chamar, toast, confirmar, etapasTexto, arr, ETAPAS } from '../util.js';
+import { h, num, data, chip, modal, ler, chamar, toast, confirmar, etapasTexto, arr, ETAPAS, NOME_ETAPA } from '../util.js';
 import { imprimirFolhaOp } from '../acoes.js';
 
 let busca = '';
@@ -124,13 +124,17 @@ function criarOp(el) {
     corpo: `<p class="muted peq">Etapas da OP: <b>${h(etapasTexto([...new Set(vals.flatMap(v => arr(v.linha.etapas)))].sort((a, b) => ETAPAS.indexOf(a) - ETAPAS.indexOf(b))))}</b>. Cada item segue as próprias etapas.</p>
       <div class="tabela-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Produto</th><th>Cor</th><th>Tam.</th><th class="n">Qtd</th></tr></thead>
       <tbody>${resumo}</tbody></table></div>
-      <div class="grade g2" style="margin-top:10px">
+      <div class="grade g3" style="margin-top:10px">
+        <label class="campo">Do corte vai para<select id="op-inicio"><option value="">Aguardando destino (escolher no Kanban)</option>
+          ${ETAPAS.filter(e => vals.some(v => arr(v.linha.etapas).includes(e))).map(e => `<option value="${e}">${NOME_ETAPA[e]}</option>`).join('')}</select></label>
         <label class="campo">Descrição da OP<input id="op-desc" placeholder="Ex.: Calças retas brancas"></label>
-        <label class="campo">Observação<input id="op-obs"></label></div>`,
+        <label class="campo">Observação<input id="op-obs"></label></div>
+      <p class="peq muted" style="margin:6px 0 0">Deixando "Aguardando destino", a OP cai nessa coluna do Kanban e você arrasta para Facção, Caseador, Bordado… Se escolher uma etapa aqui, os itens que não passam por ela ficam aguardando destino.</p>`,
     botoes: [{ texto: 'Voltar' }, { texto: 'Criar OP', classe: 'pri', acao: async (m) => {
       const op = await chamar(db, 'criar_op', {
         p_itens: vals.map(v => ({ pedido_item_id: v.linha.pedido_item_id, quantidade: +v.qtd })),
-        p_descricao: m.querySelector('#op-desc').value, p_observacao: m.querySelector('#op-obs').value });
+        p_descricao: m.querySelector('#op-desc').value, p_observacao: m.querySelector('#op-obs').value,
+        p_inicio: m.querySelector('#op-inicio').value || null });
       if (!op) return false;
       sel.clear();
       toast(`OP ${op.numero} criada.`, 'ok');

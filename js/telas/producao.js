@@ -1,9 +1,10 @@
 import { db, tem } from '../app.js';
-import { h, num, data, chip, ler, modal, etapasTexto, arr, NOME_ETAPA } from '../util.js';
+import { h, num, data, chip, ler, modal, chamar, toast, confirmar, etapasTexto, arr, NOME_ETAPA, ETAPAS } from '../util.js';
 import { desmembrar, encaminhar, enviar, confirmarSaida, excluirRemessa, receber, embalar, imprimirRomaneio, imprimirFolhaOp, chipsEtapas, resumoEtapasOp, chipsResumo } from '../acoes.js';
 
 const COLUNAS = [
   { id: 'CORTADO', nome: 'Cortado · gerar OP' },
+  { id: 'DESTINO', nome: 'Aguardando destino' },
   { id: 'FACCAO', nome: 'Facção', etapa: true }, { id: 'CASEADOR', nome: 'Caseador', etapa: true },
   { id: 'SILK', nome: 'Silk', etapa: true }, { id: 'BORDADO', nome: 'Bordado', etapa: true },
   { id: 'EMBALAGEM', nome: 'Embalagem' }, { id: 'PRONTO', nome: 'Pronto para entrega' },
@@ -120,7 +121,7 @@ export async function render(el) {
     else if (d.acao === 'embalar') embalar(d.op, volta);
     else if (d.acao === 'folha') imprimirFolhaOp(d.op);
     else if (d.acao === 'desmembrar') desmembrar(d.op, volta);
-    else if (d.acao === 'encaminhar') encaminhar(d.op, d.etapa, null, volta);
+    else if (d.acao === 'encaminhar') encaminhar(d.op, d.etapa || null, null, volta);
   };
   el.querySelectorAll('.kanban [data-acao]').forEach(b => b.onclick = (ev) => { ev.stopPropagation(); executar(b.dataset); });
   el.querySelectorAll('.kcard[data-k]').forEach(k => k.onclick = (ev) => {
@@ -134,7 +135,7 @@ export async function render(el) {
   // arrastar cartão concluído para outra coluna
   let arrastando = null;
   el.querySelectorAll('.kcard[draggable=true]').forEach(k => {
-    k.ondragstart = (e) => { arrastando = { op: k.dataset.op, etapa: k.dataset.etapa }; e.dataTransfer.effectAllowed = 'move'; k.classList.add('arrastando'); };
+    k.ondragstart = (e) => { arrastando = { op: k.dataset.op, etapa: k.dataset.etapa, tipo: k.dataset.tipo }; e.dataTransfer.effectAllowed = 'move'; k.classList.add('arrastando'); };
     k.ondragend = () => { k.classList.remove('arrastando'); el.querySelectorAll('.kcol').forEach(c => c.classList.remove('alvo')); };
   });
   el.querySelectorAll('.kcol[data-col]').forEach(col => {
@@ -145,7 +146,8 @@ export async function render(el) {
       e.preventDefault(); col.classList.remove('alvo');
       if (!ok()) return;
       const a = arrastando; arrastando = null;
-      encaminhar(a.op, a.etapa, col.dataset.col, () => render(el));
+      if (col.dataset.col === 'DESTINO') return;
+      encaminhar(a.op, a.etapa || null, col.dataset.col, () => render(el));
     };
   });
 }
@@ -163,6 +165,9 @@ function acoesDe(c, pode) {
   } else if (c.estado === 'COM_PARCEIRO') {
     cls = 'parceiro'; linha = `Com <b>${h(c.parceiro_nome)}</b>${c.previsao_retorno ? ` · volta ${data(c.previsao_retorno)}` : ''}`;
     if (pode) lista = [b('receber', 'Receber peças', 'pri'), b('romaneio', 'Romaneio')];
+  } else if (c.estado === 'AGUARDANDO_DESTINO') {
+    cls = 'concluido'; estado = chip('✂ Cortado · escolher destino', 'info');
+    if (pode) lista = [b('encaminhar', 'Escolher destino ▸', 'pri')];
   } else if (c.estado === 'CONCLUIDO') {
     cls = 'concluido'; estado = chip(`✓ ${NOME_ETAPA[c.etapa]} pronta`, 'ok');
     if (pode) lista = [b('encaminhar', 'Encaminhar ▸', 'pri')];
@@ -181,7 +186,8 @@ const clientes = (c) => [...new Set(String(c.pedidos || '').split(' | ').map(x =
 
 function cartao(c, pode) {
   const a = acoesDe(c, pode);
-  const arrasta = pode && c.estado === 'CONCLUIDO' ? `draggable="true" data-op="${c.op_id}" data-etapa="${c.etapa}"` : '';
+  const arrasta = pode && c.estado === 'CONCLUIDO' ? `draggable="true" data-op="${c.op_id}" data-etapa="${c.etapa}"`
+    : pode && c.estado === 'AGUARDANDO_DESTINO' ? `draggable="true" data-op="${c.op_id}" data-etapa=""` : '';
   const cli = clientes(c);
   const peds = numerosPedidos(c);
   return `<article class="kcard compacto ${a.cls}" ${arrasta} data-k="${cardsAtuais.push(c) - 1}" title="Clique para ver tudo">
@@ -209,7 +215,7 @@ export async function detalheCartao(c, pode, executar) {
   const itens = ids.length ? await ler(db.from('v_op_itens').select('*').in('op_item_id', ids).order('pedido_numero')) : [];
   const qtd = new Map(); pos.forEach(p => qtd.set(p.op_item_id, (qtd.get(p.op_item_id) || 0) + p.quantidade));
   const a = acoesDe(c, pode);
-  const onde = c.local === 'ETAPA' ? NOME_ETAPA[c.etapa] : c.local === 'EMBALAGEM' ? 'Embalagem' : 'Pronto para entrega';
+  const onde = c.local === 'ETAPA' ? NOME_ETAPA[c.etapa] : c.local === 'DESTINO' ? 'Saiu do corte · aguardando destino' : c.local === 'EMBALAGEM' ? 'Embalagem' : 'Pronto para entrega';
   const m = modal({
     titulo: `OP ${c.op_numero}${c.op_descricao ? ' · ' + c.op_descricao : ''}`, largo: true,
     corpo: `<div class="grade g3">
@@ -244,3 +250,5 @@ function detalheCortado(g, pode) {
   });
 }
 export { NOME_ETAPA };
+
+

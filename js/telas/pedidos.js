@@ -46,6 +46,7 @@ async function detalhe(id, depois) {
   const funcs = itens.length ? await ler(db.from('pedido_funcionarios').select('*').in('pedido_item_id', itens.map(i => i.id)).order('ordem')) : [];
   const ativo = !p.baixado_em && !p.cancelado_em;
   const onde = d => d.local === 'ETAPA' ? `${NOME_ETAPA[d.etapa]} · ${d.estado === 'AGUARDANDO_ENVIO' ? 'aguardando envio' : d.estado === 'PREPARADO' ? 'remessa preparada' : d.estado === 'CONCLUIDO' ? 'pronto, aguardando encaminhar' : 'com o parceiro'}`
+    : d.local === 'DESTINO' ? 'Cortado · aguardando destino'
     : d.local === 'EMBALAGEM' ? 'Aguardando embalagem' : d.local === 'ENTREGUE' ? 'Entregue ao cliente' : 'Pronto (embalado), a entregar';
   const mm = modal({
     titulo: `Pedido ${p.numero} · ${p.cliente_nome}`, largo: true,

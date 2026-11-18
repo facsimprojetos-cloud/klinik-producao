@@ -65,8 +65,10 @@ export async function encaminhar(opId, de, para, depois) {
     ler(db.from('v_op_itens').select('*').eq('op_id', opId)),
   ]);
   const hist = historicoEtapas(todas);
-  const etapas = todas.filter(e => e.etapa === de && e.concluido > 0);
-  if (!etapas.length) return toast('Não há peças concluídas nesta etapa.', 'erro');
+  // de = null: peças que saíram do corte e aguardam o primeiro destino
+  const etapas = de ? todas.filter(e => e.etapa === de && e.concluido > 0)
+    : itens.filter(i => i.aguardando_destino > 0).map(i => ({ op_item_id: i.op_item_id, concluido: i.aguardando_destino }));
+  if (!etapas.length) return toast(de ? 'Não há peças concluídas nesta etapa.' : 'Não há peças aguardando destino.', 'erro');
   const info = new Map(itens.map(i => [i.op_item_id, i]));
   const op = itens[0];
   // sugestão: próxima etapa planejada do 1º item; se não houver, embalagem
@@ -83,8 +85,8 @@ export async function encaminhar(opId, de, para, depois) {
       ${passa && faltam.length ? `<div class="peq" style="color:var(--alerta)">ainda previsto: ${h(etapasTexto(faltam))}</div>` : ''}</td></tr>`;
   }).join('');
   modal({
-    titulo: `OP ${op.op_numero} · ${NOME_ETAPA[de]} concluída · para onde vai?`, largo: true,
-    corpo: `<div class="grade g2"><label class="campo">Destino<select id="enc-para">${DESTINOS.map(([v, n]) => `<option value="${v}" ${v === sugestao ? 'selected' : ''}>${n}${v === de ? ' (de novo)' : ''}</option>`).join('')}</select></label></div>
+    titulo: de ? `OP ${op.op_numero} · ${NOME_ETAPA[de]} concluída · para onde vai?` : `OP ${op.op_numero} · saiu do corte · para onde vai?`, largo: true,
+    corpo: `<div class="grade g2"><label class="campo">Destino<select id="enc-para">${DESTINOS.map(([v, n]) => `<option value="${v}" ${v === sugestao ? 'selected' : ''}>${n}${de && v === de ? ' (de novo)' : ''}</option>`).join('')}</select></label></div>
       <div class="tabela-wrap" style="margin-top:10px"><table><thead><tr><th>Pedido</th><th>Item</th><th>Etapas previstas</th><th class="n">Concluídas</th><th class="n">Encaminhar</th></tr></thead>
       <tbody id="enc-linhas">${linhasHtml(sugestao)}</tbody></table></div>
       <p class="peq muted" style="margin:8px 0 0">O que não for encaminhado agora continua aqui como concluído, esperando decisão.</p>`,
