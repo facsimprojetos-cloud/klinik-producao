@@ -106,6 +106,7 @@ function htmlItem(it, i) {
   return `<article class="item-orc" data-item="${i}">
     <div class="io-cab"><b>Item ${i + 1}</b>
       <div class="acoes"><select class="inp" data-i="${i}" data-k="tipo" style="min-height:34px;padding:4px 8px;width:auto">${['PRODUTO', 'SERVICO', 'FRETE'].map(t => `<option ${it.tipo === t ? 'selected' : ''} value="${t}">${t === 'SERVICO' ? 'Serviço' : t === 'FRETE' ? 'Frete' : 'Produto'}</option>`).join('')}</select>
+        <button class="btn peq" data-dup-item="${i}" title="Cria uma cópia deste item com os funcionários e todas as medidas">Duplicar</button>
         <button class="btn peq perigo" data-rem-item="${i}">Remover</button></div></div>
     <div class="io-corpo">
       <div class="grade g4">
@@ -125,7 +126,7 @@ function htmlItem(it, i) {
             ${e !== 'FACCAO' ? `<input class="inp" data-i="${i}" data-k="${e === 'SILK' ? 'silk_desc' : 'bordado_desc'}" placeholder="O que vai ter (ex.: logo peito)" value="${h(it[e === 'SILK' ? 'silk_desc' : 'bordado_desc'] || '')}" ${it.etapas.includes(e) ? '' : 'disabled'}>` : ''}</div>`).join('')}
         </div></div>` : ''}
       ${!fr ? `<div style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-          <b>Funcionários e medidas</b><span class="acoes"><button class="btn peq" data-add-func="${i}">+ Funcionário</button>${i > 0 ? `<button class="btn peq" data-copiar="${i}">Copiar nomes do item anterior</button>` : ''}</span></div>
+          <b>Funcionários e medidas</b><span class="acoes"><button class="btn peq" data-add-func="${i}">+ Funcionário</button>${i > 0 ? `<button class="btn peq" data-copiar="${i}">Copiar funcionários e medidas do item anterior</button>` : ''}</span></div>
         ${it.funcionarios.length ? `<div class="tabela-wrap func-tab" style="margin-top:6px"><table><thead><tr><th>Nome *</th><th>Qtd</th><th>Tam. *</th>${MED.map(([, r]) => `<th>${r}</th>`).join('')}<th>Outras</th><th>Ajustes</th><th>Obs.</th><th></th></tr></thead>
           <tbody>${it.funcionarios.map((f, j) => `<tr><td><input data-i="${i}" data-f="${j}" data-fk="nome" value="${h(f.nome || '')}" style="min-width:140px"></td>
             <td><input data-i="${i}" data-f="${j}" data-fk="quantidade" type="number" min="1" value="${f.quantidade || 1}"></td>
@@ -195,14 +196,32 @@ function editor() {
   el.oninput = aoDigitar;
   el.onchange = aoMudar;
   el.querySelectorAll('[data-add]').forEach(b => b.onclick = () => { reg.itens.push(itemVazio(b.dataset.add)); marcar(); editor(); });
+  el.querySelectorAll('[data-dup-item]').forEach(b => b.onclick = () => {
+    const i = +b.dataset.dupItem, o = reg.itens[i];
+    const copia = JSON.parse(JSON.stringify({ ...o, id: undefined }));
+    copia.funcionarios = (o.funcionarios || []).map(f => ({ ...JSON.parse(JSON.stringify(f)), id: undefined, item_id: undefined }));
+    reg.itens.splice(i + 1, 0, copia);
+    toast(`Item duplicado com ${copia.funcionarios.length} funcionário(s) e medidas. Troque o produto ou a cor na cópia.`, 'ok');
+    marcar(); editor();
+  });
   el.querySelectorAll('[data-rem-item]').forEach(b => b.onclick = () => { reg.itens.splice(+b.dataset.remItem, 1); marcar(); editor(); });
   el.querySelectorAll('[data-add-func]').forEach(b => b.onclick = () => { reg.itens[+b.dataset.addFunc].funcionarios.push({ nome: '', quantidade: 1, tamanho: '' }); marcar(); editor(); });
   el.querySelectorAll('[data-rem-func]').forEach(b => b.onclick = () => { const [i, j] = b.dataset.remFunc.split(':').map(Number); reg.itens[i].funcionarios.splice(j, 1); marcar(); editor(); });
   el.querySelectorAll('[data-copiar]').forEach(b => b.onclick = () => {
     const i = +b.dataset.copiar, ant = [...reg.itens.slice(0, i)].reverse().find(x => x.funcionarios.length);
     if (!ant) return toast('Nenhum item anterior tem funcionários.', 'erro');
-    const ja = new Set(reg.itens[i].funcionarios.map(f => (f.nome || '').toLowerCase()));
-    ant.funcionarios.filter(f => f.nome && !ja.has(f.nome.toLowerCase())).forEach(f => reg.itens[i].funcionarios.push({ nome: f.nome, quantidade: 1, tamanho: '' }));
+    // copia tudo: nome, quantidade, tamanho, medidas, outras medidas, ajustes e observação.
+    // Se o funcionário já está no item, só completa o que estiver em branco.
+    const lista = reg.itens[i].funcionarios;
+    let novos = 0, completados = 0;
+    ant.funcionarios.filter(f => f.nome).forEach(f => {
+      const igual = lista.find(x => (x.nome || '').trim().toLowerCase() === f.nome.trim().toLowerCase());
+      if (!igual) { lista.push({ ...f, id: undefined }); novos++; return; }
+      let mudou = false;
+      Object.keys(f).forEach(k => { if (k !== 'id' && (igual[k] == null || igual[k] === '') && f[k] != null && f[k] !== '') { igual[k] = f[k]; mudou = true; } });
+      if (mudou) completados++;
+    });
+    toast(`${novos} funcionário(s) copiados com as medidas${completados ? `, ${completados} completados` : ''}.`, 'ok');
     marcar(); editor();
   });
   el.querySelector('#salvar').onclick = salvar;
