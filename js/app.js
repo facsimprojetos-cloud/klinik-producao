@@ -1,7 +1,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_KEY, SCHEMA, EMPRESA } from './config.js';
 // Versão publicada: muda a cada atualização para o navegador não usar telas antigas do cache
-const VERSAO = '202611181200'; // atualizar a cada publicação
+const VERSAO = '202611181140'; // atualizar a cada publicação
 import { h, toast, modal } from './util.js';
 
 // Chegou pelo link de "Esqueci minha senha" do e-mail?

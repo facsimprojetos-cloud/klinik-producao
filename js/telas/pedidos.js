@@ -1,5 +1,5 @@
 import { db, tem } from '../app.js';
-import { h, num, moeda, data, dataHora, chip, modal, ler, chamar, toast, confirmar, pedirTexto, NOME_ETAPA, etapasTexto, arr, hojeISO, imprimirHtml, cabecalhoDoc, nomeArquivo } from '../util.js';
+import { h, num, moeda, data, dataHora, chip, modal, ler, chamar, toast, confirmar, pedirTexto, NOME_ETAPA, etapasTexto, arr, hojeISO, cadastros, imprimirHtml, cabecalhoDoc, nomeArquivo } from '../util.js';
 import { novaOp, imprimirFolhaCorte, tabelaFuncionarios } from '../acoes.js';
 
 let aba = 'andamento';
@@ -36,13 +36,16 @@ export async function render(el) {
 }
 
 async function detalhe(id, depois) {
-  const [[p], [r], itens, dist, entregas] = await Promise.all([
+  const [[p], [r], itens, dist, entregas, pags] = await Promise.all([
     ler(db.from('pedidos').select('*').eq('id', id)),
     ler(db.from('v_pedido_resumo').select('*').eq('pedido_id', id)),
     ler(db.from('pedido_itens').select('*').eq('pedido_id', id).order('ordem')),
     ler(db.from('v_pedido_distribuicao').select('*').eq('pedido_id', id).order('op_numero')),
     ler(db.from('entregas').select('*, entrega_itens(quantidade)').eq('pedido_id', id).order('criado_em')),
+    ler(db.from('pedido_pagamentos').select('*').eq('pedido_id', id).order('data')),
   ]);
+  const totalPedido = itens.reduce((a, i) => a + i.quantidade * Number(i.valor_unitario), 0);
+  const pago = pags.reduce((a, x) => a + Number(x.valor), 0);
   const funcs = itens.length ? await ler(db.from('pedido_funcionarios').select('*').in('pedido_item_id', itens.map(i => i.id)).order('ordem')) : [];
   const ativo = !p.baixado_em && !p.cancelado_em;
   const onde = d => d.local === 'ETAPA' ? `${NOME_ETAPA[d.etapa]} · ${d.estado === 'AGUARDANDO_ENVIO' ? 'aguardando envio' : d.estado === 'PREPARADO' ? 'remessa preparada' : d.estado === 'CONCLUIDO' ? 'pronto, aguardando encaminhar' : 'com o parceiro'}`
@@ -71,6 +74,11 @@ async function detalhe(id, depois) {
       <div class="tabela-wrap"><table><thead><tr><th>Romaneio</th><th>Data</th><th class="n">Peças</th><th>Por</th><th></th></tr></thead>
         <tbody>${entregas.map(e => `<tr><td class="forte">${h(e.numero)}</td><td>${data(e.data)}</td><td class="n">${num(e.entrega_itens.reduce((a, x) => a + x.quantidade, 0))}</td><td>${h(e.criado_por || '')}</td>
           <td><button class="btn peq" data-imp-ent="${e.id}">Romaneio PDF</button>${tem('supervisor') ? ` <button class="btn peq perigo" data-del-ent="${e.id}" data-num="${h(e.numero)}">Excluir</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
+      <h3 style="margin-top:14px">Pagamentos <span class="peq muted">· pedido ${moeda(totalPedido)} · recebido ${moeda(pago)} · ${pago >= totalPedido - 0.004 ? chip('Quitado', 'ok') : chip('Saldo ' + moeda(totalPedido - pago), 'alerta')}</span></h3>
+      ${pags.length ? `<div class="tabela-wrap"><table><thead><tr><th>Data</th><th>Forma</th><th>Observação</th><th class="n">Valor</th><th></th></tr></thead>
+        <tbody>${pags.map(x => `<tr><td>${data(x.data)}</td><td>${h(x.forma || '')}</td><td>${h(x.observacao || '')}</td><td class="n">${moeda(x.valor)}</td>
+          <td>${tem('supervisor') ? `<button class="btn peq perigo" data-del-pag="${x.id}">Excluir</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted peq">Nenhum pagamento registrado.</p>'}
+      ${tem('financeiro') || tem('comercial') ? `<button class="btn peq" id="novo-pag">+ Registrar pagamento / antecipação</button>` : ''}
       <h3 style="margin-top:14px">Onde estão as peças</h3>
       <div class="tabela-wrap"><table><thead><tr><th>OP</th><th>Item</th><th>Onde</th><th>Parceiro</th><th class="n">Peças</th></tr></thead>
         <tbody>${dist.map(d => `<tr><td class="forte">OP ${d.op_numero}</td><td>${h([d.descricao, d.cor, d.tamanho].filter(Boolean).join(' · '))}</td>
@@ -90,6 +98,7 @@ async function detalhe(id, depois) {
         if (!motivo) return false;
         if (await chamar(db, 'pedido_cancelar', { p_id: id, p_motivo: motivo })) { toast('Pedido cancelado.', 'ok'); depois(); }
       } }] : []),
+      { texto: 'Folha completa do pedido', fecha: false, acao: () => { imprimirFolhaPedido(id); return false; } },
       ...(ativo && tem('producao') && r.embalado > 0 ? [{ texto: 'Romaneio de entrega', classe: 'pri', acao: () => { novaEntrega(p, depois); } }] : []),
       ...(ativo && tem('producao') && r.situacao === 'PRONTO PARA ENTREGA' ? [{ texto: 'Dar baixa (entregue)', classe: 'acento', acao: async () => {
         if (!await confirmar('Dar baixa', `Confirmar a entrega do pedido <b>${h(p.numero)}</b>? Ele sai da lista e vai para o histórico.`, 'Dar baixa')) return false;
@@ -99,6 +108,11 @@ async function detalhe(id, depois) {
         if (await chamar(db, 'reabrir_pedido', { p_pedido: id })) { toast('Pedido reaberto.', 'ok'); depois(); }
       } }] : []),
     ]
+  });
+  mm.el.querySelector('#novo-pag')?.addEventListener('click', () => novoPagamento(p, totalPedido - pago, () => { mm.fechar(); detalhe(id, depois); }));
+  mm.el.querySelectorAll('[data-del-pag]').forEach(b => b.onclick = async () => {
+    if (!await confirmar('Excluir pagamento', 'Excluir este pagamento do pedido?', 'Excluir', 'perigo')) return;
+    if (await chamar(db, 'excluir_pagamento_pedido', { p_id: b.dataset.delPag })) { toast('Pagamento excluído.', 'ok'); mm.fechar(); detalhe(id, depois); }
   });
   mm.el.querySelectorAll('[data-imp-ent]').forEach(b => b.onclick = () => imprimirEntrega(b.dataset.impEnt));
   mm.el.querySelectorAll('[data-del-ent]').forEach(b => b.onclick = async () => {
@@ -131,6 +145,11 @@ async function novaEntrega(p, depois) {
       if (!e) return false;
       toast(`Entrega ${e.numero} registrada.`, 'ok');
       depois && depois();
+      const [rr] = await ler(db.from('v_pedido_resumo').select('baixado_em').eq('pedido_id', p.id));
+      if (rr?.baixado_em) {
+        toast('Pedido entregue por completo e movido para o histórico.', 'ok');
+        if (await confirmar('Pedido completo', `Todas as peças do pedido <b>${h(p.numero)}</b> foram entregues. Imprimir a <b>folha completa</b> (com histórico de retiradas e pagamentos)?`, 'Folha completa', 'pri', 'Só o romaneio')) return imprimirFolhaPedido(p.id);
+      }
       imprimirEntrega(e.id);
     } }]
   });
@@ -173,4 +192,76 @@ async function imprimirEntrega(entregaId) {
     ${e.observacao ? `<div class="obs">${h(e.observacao)}</div>` : ''}
     <div class="assin"><div>Entregue por (KLINIK) · data</div><div>Recebido por (${h(p.cliente_nome)}) · data</div></div></div>`,
     nomeArquivo(['Romaneio de entrega', e.numero, faltam ? 'Parcial' : 'Completo', 'Pedido ' + p.numero, p.cliente_nome, num(pecas) + ' pc', data(e.data).replaceAll('/', '-')]));
+}
+
+
+// ---------- Pagamento / antecipação do cliente ----------
+async function novoPagamento(p, saldo, depois) {
+  const cad = await cadastros(db);
+  modal({
+    titulo: `Pagamento · Pedido ${p.numero} · ${p.cliente_nome}`,
+    corpo: `<p class="muted peq">Saldo em aberto: <b>${moeda(Math.max(saldo, 0))}</b></p><div class="grade g2">
+      <label class="campo">Data<input type="date" id="pg-data" value="${hojeISO()}"></label>
+      <label class="campo">Valor (R$)<input type="number" step="0.01" min="0" id="pg-valor" value="${saldo > 0 ? saldo.toFixed(2) : ''}"></label>
+      <label class="campo">Forma<select id="pg-forma">${cad.formas.map(f => `<option ${f.nome === p.forma_pagamento ? 'selected' : ''}>${h(f.nome)}</option>`).join('')}<option>Outro</option></select></label>
+      <label class="campo">Observação<input id="pg-obs" placeholder="Ex.: entrada 50%, antecipação"></label></div>`,
+    botoes: [{ texto: 'Cancelar' }, { texto: 'Registrar', classe: 'pri', acao: async (m) => {
+      const r = await chamar(db, 'registrar_pagamento_pedido', { p_pedido: p.id, p_data: m.querySelector('#pg-data').value || null,
+        p_valor: +m.querySelector('#pg-valor').value || 0, p_forma: m.querySelector('#pg-forma').value, p_observacao: m.querySelector('#pg-obs').value });
+      if (!r) return false;
+      toast('Pagamento registrado.', 'ok'); depois && depois();
+    } }]
+  });
+}
+
+// ---------- Folha completa do pedido: itens, histórico de retiradas e pagamentos ----------
+async function imprimirFolhaPedido(pedidoId) {
+  const [[p], [r], itens, entregas, pags] = await Promise.all([
+    ler(db.from('pedidos').select('*').eq('id', pedidoId)),
+    ler(db.from('v_pedido_resumo').select('*').eq('pedido_id', pedidoId)),
+    ler(db.from('pedido_itens').select('*').eq('pedido_id', pedidoId).order('ordem')),
+    ler(db.from('entregas').select('*, entrega_itens(op_item_id, quantidade)').eq('pedido_id', pedidoId).order('criado_em')),
+    ler(db.from('pedido_pagamentos').select('*').eq('pedido_id', pedidoId).order('data')),
+  ]);
+  const cli = p.cliente_id ? (await ler(db.from('clientes').select('*').eq('id', p.cliente_id)))[0] : null;
+  const funcs = itens.length ? await ler(db.from('pedido_funcionarios').select('*').in('pedido_item_id', itens.map(i => i.id)).order('ordem')) : [];
+  const oiIds = [...new Set(entregas.flatMap(e => e.entrega_itens.map(x => x.op_item_id)))];
+  const ois = oiIds.length ? await ler(db.from('op_itens').select('id, pedido_item_id').in('id', oiIds)) : [];
+  const itemDoOi = new Map(ois.map(o => [o.id, o.pedido_item_id]));
+  const entreguePorItem = new Map();
+  entregas.forEach(e => e.entrega_itens.forEach(x => { const k = itemDoOi.get(x.op_item_id); entreguePorItem.set(k, (entreguePorItem.get(k) || 0) + x.quantidade); }));
+  const nomeItem = (i) => [i.referencia, i.descricao, i.cor, i.tamanho].filter(Boolean).join(' · ');
+  const totalPedido = itens.reduce((a, i) => a + i.quantidade * Number(i.valor_unitario), 0);
+  const pago = pags.reduce((a, x) => a + Number(x.valor), 0);
+  const prod = itens.filter(i => i.tipo === 'PRODUTO');
+  const completo = r.pecas > 0 && r.entregue >= r.pecas;
+  imprimirHtml(`<div class="doc">${cabecalhoDoc(completo ? 'TERMO DE ENTREGA DO PEDIDO' : 'SITUAÇÃO DO PEDIDO', `Pedido ${p.numero} · ${data(hojeISO())}`)}
+    <table class="info"><tr><td>Cliente</td><td><b>${h(p.cliente_nome)}</b>${cli?.razao_social ? `<br>${h(cli.razao_social)}` : ''}</td><td>CNPJ / CPF</td><td>${h(cli?.documento || '—')}</td></tr>
+      <tr><td>Pedido</td><td><b>${h(p.numero)}</b> · ${data(p.data)}</td><td>Vendedor</td><td>${h(p.vendedor || '—')}</td></tr>
+      <tr><td>Previsão de entrega</td><td>${data(p.previsao_entrega) || '—'}</td><td>Situação</td><td><b>${completo ? 'Entregue por completo' + (p.baixado_em ? ' em ' + data(p.baixado_em.slice(0, 10)) : '') : h(r.situacao)}</b></td></tr>
+      ${cli?.endereco ? `<tr><td>Endereço</td><td colspan="3">${h(cli.endereco)}</td></tr>` : ''}</table>
+    <h3>Itens do pedido</h3>
+    <table><thead><tr><th>Item</th><th>Funcionários</th><th class="n">Qtd</th><th class="n">Entregue</th><th class="n">Falta</th><th class="n">Valor</th></tr></thead>
+      <tbody>${itens.map(i => { const fs = funcs.filter(f => f.pedido_item_id === i.id), ent = entreguePorItem.get(i.id) || 0;
+        return `<tr><td>${h(nomeItem(i))}${i.tecido ? `<br><small>${h(i.tecido)}</small>` : ''}</td><td class="peq">${h(fs.map(f => f.nome).join(', '))}</td>
+          <td class="n">${num(i.quantidade)}</td><td class="n">${i.tipo === 'PRODUTO' ? num(ent) : '—'}</td><td class="n">${i.tipo === 'PRODUTO' ? num(Math.max(i.quantidade - ent, 0)) : '—'}</td>
+          <td class="n">${moeda(i.quantidade * i.valor_unitario)}</td></tr>`; }).join('')}</tbody>
+      <tfoot><tr><th colspan="2">Total</th><th class="n">${num(prod.reduce((a, i) => a + i.quantidade, 0))}</th><th class="n">${num(r.entregue)}</th><th class="n">${num(Math.max(r.pecas - r.entregue, 0))}</th><th class="n">${moeda(totalPedido)}</th></tr></tfoot></table>
+    <h3>Histórico de retiradas</h3>
+    ${entregas.length ? `<table><thead><tr><th>#</th><th>Romaneio</th><th>Data</th><th>Peças</th><th class="n">Qtd</th><th>Observação</th></tr></thead>
+      <tbody>${entregas.map((e, n) => { const porItem = new Map(); e.entrega_itens.forEach(x => { const k = itemDoOi.get(x.op_item_id); porItem.set(k, (porItem.get(k) || 0) + x.quantidade); });
+        return `<tr><td>${n + 1}ª</td><td>${h(e.numero)}</td><td>${data(e.data)}</td>
+          <td class="peq">${[...porItem.entries()].map(([k, q]) => { const i = itens.find(x => x.id === k); return `${num(q)}× ${h(i ? nomeItem(i) : '')}`; }).join('<br>')}</td>
+          <td class="n"><b>${num(e.entrega_itens.reduce((a, x) => a + x.quantidade, 0))}</b></td><td class="peq">${h(e.observacao || '')}</td></tr>`; }).join('')}</tbody></table>`
+      : '<p>Nenhuma retirada registrada.</p>'}
+    <h3>Pagamentos</h3>
+    ${pags.length ? `<table><thead><tr><th>Data</th><th>Forma</th><th>Observação</th><th class="n">Valor</th></tr></thead>
+      <tbody>${pags.map(x => `<tr><td>${data(x.data)}</td><td>${h(x.forma || '')}</td><td>${h(x.observacao || '')}</td><td class="n">${moeda(x.valor)}</td></tr>`).join('')}</tbody></table>`
+      : `<p>Nenhum pagamento registrado${p.forma_pagamento ? ` · forma combinada: ${h(p.forma_pagamento)}` : ''}.</p>`}
+    <table class="info" style="margin-top:4mm"><tr><td>Valor do pedido</td><td><b>${moeda(totalPedido)}</b></td><td>Recebido</td><td><b>${moeda(pago)}</b></td></tr>
+      <tr><td>Saldo a receber</td><td colspan="3"><b>${pago >= totalPedido - 0.004 ? 'Quitado' : moeda(totalPedido - pago)}</b></td></tr></table>
+    ${completo ? `<p style="margin-top:4mm">Declaro que recebi todas as peças deste pedido, conforme o histórico de retiradas acima.</p>` : ''}
+    <div class="assin"><div>KLINIK · data</div><div>${h(p.cliente_nome)} · data</div></div></div>`,
+    nomeArquivo([completo ? 'Termo de entrega' : 'Situacao do pedido', 'Pedido ' + p.numero, p.cliente_nome, completo ? 'Completo' : r.situacao,
+      num(r.entregue) + ' de ' + num(r.pecas) + ' pc', pago >= totalPedido - 0.004 ? 'Quitado' : 'Saldo ' + moeda(totalPedido - pago).replace(/\s/g, ' '), data(hojeISO()).replaceAll('/', '-')]));
 }
