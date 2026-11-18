@@ -148,8 +148,8 @@ export async function cadastros(db, forcar = false) {
 }
 export function limparCache() { cache.v = null; }
 
-export const ETAPAS = ['FACCAO', 'SILK', 'BORDADO'];
-export const NOME_ETAPA = { FACCAO: 'Facção', SILK: 'Silk', BORDADO: 'Bordado' };
+export const ETAPAS = ['FACCAO', 'CASEADOR', 'SILK', 'BORDADO'];
+export const NOME_ETAPA = { FACCAO: 'Facção', CASEADOR: 'Caseador', SILK: 'Silk', BORDADO: 'Bordado' };
 export function etapasTexto(lista) { return (lista || []).length ? lista.map(e => NOME_ETAPA[e] || e).join(' → ') : 'Sem etapas'; }
 export function somaDias(isoData, n) { const d = new Date(isoData + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); }
 // Postgres devolve arrays de enum como "{FACCAO,BORDADO}" em algumas views

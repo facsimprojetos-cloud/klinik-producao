@@ -6,7 +6,7 @@ import {
   cadastros, NOME_ETAPA, etapasTexto, arr, qrSvg, imprimirHtml, cabecalhoDoc, nomeArquivo
 } from './util.js';
 
-const ORDEM_ETAPAS = ['FACCAO', 'SILK', 'BORDADO'];
+const ORDEM_ETAPAS = ['FACCAO', 'CASEADOR', 'SILK', 'BORDADO'];
 // Histórico por item da OP: { op_item_id: { ETAPA: {quantidade, enviado, retornado} } }
 export function historicoEtapas(linhas) {
   const m = new Map();
@@ -57,7 +57,7 @@ export async function novaOp(depois, filtroPedido = null) {
 }
 
 // ---------- Encaminhar peças concluídas numa etapa (para outra etapa ou embalagem) ----------
-const DESTINOS = [['FACCAO', 'Facção'], ['SILK', 'Silk'], ['BORDADO', 'Bordado'], ['EMBALAGEM', 'Embalagem']];
+const DESTINOS = [['FACCAO', 'Facção'], ['CASEADOR', 'Caseador'], ['SILK', 'Silk'], ['BORDADO', 'Bordado'], ['EMBALAGEM', 'Embalagem']];
 export async function encaminhar(opId, de, para, depois) {
   if (!tem('producao')) return toast('Encaminhar exige o perfil "producao".', 'erro');
   const [todas, itens] = await Promise.all([

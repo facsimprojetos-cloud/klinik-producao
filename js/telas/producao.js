@@ -4,7 +4,8 @@ import { desmembrar, encaminhar, enviar, confirmarSaida, excluirRemessa, receber
 
 const COLUNAS = [
   { id: 'CORTADO', nome: 'Cortado · gerar OP' },
-  { id: 'FACCAO', nome: 'Facção', etapa: true }, { id: 'SILK', nome: 'Silk', etapa: true }, { id: 'BORDADO', nome: 'Bordado', etapa: true },
+  { id: 'FACCAO', nome: 'Facção', etapa: true }, { id: 'CASEADOR', nome: 'Caseador', etapa: true },
+  { id: 'SILK', nome: 'Silk', etapa: true }, { id: 'BORDADO', nome: 'Bordado', etapa: true },
   { id: 'EMBALAGEM', nome: 'Embalagem' }, { id: 'PRONTO', nome: 'Pronto para entrega' },
 ];
 // quando uma etapa está aberta, ela vira um Kanban próprio com estas colunas
@@ -16,6 +17,11 @@ let busca = '';
 let soAtrasados = false;
 let aberta = null;
 let cortadosPorId = new Map();   // etapa expandida (FACCAO, SILK, BORDADO) ou null
+
+// colunas de etapa que o usuário escondeu (fica salvo neste navegador). Silk começa escondido.
+let ocultas;
+try { ocultas = new Set(JSON.parse(localStorage.getItem('klinik_colunas_ocultas') || '["SILK"]')); } catch { ocultas = new Set(['SILK']); }
+const salvarOcultas = () => { try { localStorage.setItem('klinik_colunas_ocultas', JSON.stringify([...ocultas])); } catch { /* sem armazenamento */ } };
 
 const colunaDe = (c) => c.local === 'ETAPA' ? c.etapa : c.local;
 
@@ -67,7 +73,9 @@ export async function render(el) {
       <span class="muted peq">Tudo o que está em ${h(NOME_ETAPA[aberta])}, separado pela situação.</span></div>
       <div class="kanban">${SUB.map(s => col(s.id, s.nome, daEtapa.filter(c => c.estado === s.id))).join('')}</div>`;
   } else {
-    quadro = `<div class="kanban">${COLUNAS.map(c => {
+    const escondidasComPecas = COLUNAS.filter(c => ocultas.has(c.id)).map(c => ({ ...c, q: filtrados.filter(x => colunaDe(x) === c.id).reduce((a, x) => a + x.quantidade, 0) })).filter(c => c.q > 0);
+    quadro = (escondidasComPecas.length ? `<div class="aviso-oculta">${escondidasComPecas.map(c => `Coluna <b>${h(c.nome)}</b> está escondida e tem <b>${num(c.q)} pç</b> · <button class="btn peq" data-mostrar="${c.id}">Mostrar</button>`).join(' ')}</div>` : '') +
+    `<div class="kanban">${COLUNAS.filter(c => !ocultas.has(c.id)).map(c => {
       if (c.id === 'CORTADO') return col('CORTADO', c.nome, cardsCortado, '',
         (cardsCortado.map(cartaoCortado).join('') || '<div class="kvazio">Nada cortado aguardando OP</div>') +
         (emCorte ? `<div class="kvazio peq">${num(emCorte)} peça(s) ainda não cortadas · <a href="#/corte">ver corte</a></div>` : ''));
@@ -83,9 +91,19 @@ export async function render(el) {
     <div class="filtros">
       <label class="campo">Buscar<input id="busca" value="${h(busca)}" placeholder="OP, cliente, pedido, parceiro, item…"></label>
       <label class="peq" style="padding-bottom:10px"><input type="checkbox" id="atras" ${soAtrasados ? 'checked' : ''}> Só atrasados</label>
+      <button class="btn" id="colunas" style="margin-bottom:4px">☰ Colunas</button>
     </div>
     ${quadro}`;
 
+  el.querySelectorAll('[data-mostrar]').forEach(b => b.onclick = () => { ocultas.delete(b.dataset.mostrar); salvarOcultas(); render(el); });
+  el.querySelector('#colunas').onclick = () => {
+    const m = modal({ titulo: 'Colunas do quadro', corpo: `<p class="muted peq">Escolha quais etapas aparecem no Kanban. Se uma coluna escondida tiver peças, aparece um aviso no topo.</p>
+      ${COLUNAS.filter(c => c.etapa).map(c => `<label style="display:block;padding:6px 0"><input type="checkbox" data-col-vis="${c.id}" ${ocultas.has(c.id) ? '' : 'checked'}> ${h(c.nome)}</label>`).join('')}`,
+      botoes: [{ texto: 'Aplicar', classe: 'pri', acao: (mm) => {
+        mm.querySelectorAll('[data-col-vis]').forEach(x => x.checked ? ocultas.delete(x.dataset.colVis) : ocultas.add(x.dataset.colVis));
+        salvarOcultas(); render(el);
+      } }] });
+  };
   el.querySelectorAll('[data-abrir]').forEach(b => b.onclick = () => { aberta = b.dataset.abrir; render(el); });
   el.querySelector('#fechar-etapa')?.addEventListener('click', () => { aberta = null; render(el); });
   el.querySelectorAll('[data-gerar]').forEach(b => b.onclick = (ev) => { ev.stopPropagation(); sessionStorage.setItem('itens_busca', b.dataset.gerar); location.hash = '#/itens'; });

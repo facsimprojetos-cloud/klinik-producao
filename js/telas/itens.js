@@ -1,7 +1,7 @@
 // Itens dos pedidos (detalhe de venda): todos os itens, um embaixo do outro,
 // para selecionar itens de pedidos diferentes e formar uma OP.
 import { db, tem } from '../app.js';
-import { h, num, data, chip, modal, ler, chamar, toast, confirmar, etapasTexto, arr } from '../util.js';
+import { h, num, data, chip, modal, ler, chamar, toast, confirmar, etapasTexto, arr, ETAPAS } from '../util.js';
 import { imprimirFolhaOp } from '../acoes.js';
 
 let busca = '';
@@ -121,7 +121,7 @@ function criarOp(el) {
     <td>${h([v.linha.referencia, v.linha.descricao].filter(Boolean).join(' '))}</td><td>${h(v.linha.cor || '')}</td><td>${h(v.linha.tamanho || '')}</td><td class="n">${num(v.qtd)}</td></tr>`).join('');
   modal({
     titulo: 'Criar OP', largo: true,
-    corpo: `<p class="muted peq">Etapas da OP: <b>${h(etapasTexto([...new Set(vals.flatMap(v => arr(v.linha.etapas)))].sort((a, b) => ['FACCAO','SILK','BORDADO'].indexOf(a) - ['FACCAO','SILK','BORDADO'].indexOf(b))))}</b>. Cada item segue as próprias etapas.</p>
+    corpo: `<p class="muted peq">Etapas da OP: <b>${h(etapasTexto([...new Set(vals.flatMap(v => arr(v.linha.etapas)))].sort((a, b) => ETAPAS.indexOf(a) - ETAPAS.indexOf(b))))}</b>. Cada item segue as próprias etapas.</p>
       <div class="tabela-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Produto</th><th>Cor</th><th>Tam.</th><th class="n">Qtd</th></tr></thead>
       <tbody>${resumo}</tbody></table></div>
       <div class="grade g2" style="margin-top:10px">

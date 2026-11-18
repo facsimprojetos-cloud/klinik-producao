@@ -121,9 +121,9 @@ function htmlItem(it, i) {
       </div>
       ${pr ? `<div class="card" style="margin:12px 0 0;padding:10px;background:#f8f7f4">
         <b>Etapas de produção</b> <span class="muted peq">(marque o que esta variação vai ter)</span>
-        <div class="grade g3" style="margin-top:6px">
+        <div class="grade g4" style="margin-top:6px">
           ${ETAPAS.map(e => `<div><label class="peq forte"><input type="checkbox" data-i="${i}" data-etapa="${e}" ${it.etapas.includes(e) ? 'checked' : ''}> ${NOME_ETAPA[e]}</label>
-            ${e !== 'FACCAO' ? `<input class="inp" data-i="${i}" data-k="${e === 'SILK' ? 'silk_desc' : 'bordado_desc'}" placeholder="O que vai ter (ex.: logo peito)" value="${h(it[e === 'SILK' ? 'silk_desc' : 'bordado_desc'] || '')}" ${it.etapas.includes(e) ? '' : 'disabled'}>` : ''}</div>`).join('')}
+            ${['SILK', 'BORDADO'].includes(e) ? `<input class="inp" data-i="${i}" data-k="${e === 'SILK' ? 'silk_desc' : 'bordado_desc'}" placeholder="O que vai ter (ex.: logo peito)" value="${h(it[e === 'SILK' ? 'silk_desc' : 'bordado_desc'] || '')}" ${it.etapas.includes(e) ? '' : 'disabled'}>` : ''}</div>`).join('')}
         </div></div>` : ''}
       ${!fr ? `<div style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
           <b>Funcionários e medidas</b><span class="acoes"><button class="btn peq" data-add-func="${i}">+ Funcionário</button>${i > 0 ? `<button class="btn peq" data-copiar="${i}">Copiar funcionários e medidas do item anterior</button>` : ''}</span></div>
